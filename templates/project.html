@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}{{ project.display_name }}{% endblock %}
+{% block content %}
+
+{% set orch_ru = {'draft':'черновик','submitting':'отправка','linked':'связан','sync_pending':'ожидает синхр.','sync_error':'ошибка синхр.','detached':'отвязан','cancelled_locally':'отменён'} %}
+{% set remote_ru = {'pending':'ожидает','running':'выполняется','success':'успех','failed':'ошибка','cancelled':'отменён','unknown':'неизвестно'} %}
+
+<div class="breadcrumb"><a href="/">Проекты</a> / {{ project.display_name }}</div>
+
+{# ── Project header with integration info ── #}
+<div class="page-header">
+  <div class="flex" style="justify-content: space-between; align-items: center;">
+    <div>
+      <h1>{{ project.display_name }}</h1>
+      <div class="description">{{ project.description }}</div>
+      <div class="flex gap-2 mt-1" style="font-size: .78rem; color: var(--text-muted);">
+        {% if project.integration.api_url %}
+        <span>API: <span class="mono">{{ project.integration.api_url }}</span></span>
+        {% endif %}
+        {% if last_sync %}
+        <span>Синхронизация: {{ last_sync | moscow_time('%H:%M %d.%m') }}</span>
+        {% else %}
+        <span>Синхронизация: нет данных</span>
+        {% endif %}
+        <span>Запусков: {{ merged_runs|length }}</span>
+      </div>
+    </div>
+    <div class="flex">
+      <a href="/projects/{{ project.project_id }}/edit" class="btn btn-outline btn-sm">✎ Редактировать</a>
+    </div>
+  </div>
+</div>
+
+{# ── PRIMARY SECTION: Последние запуски ── #}
+<div class="runs-section">
+  <div class="runs-header">
+    <h2>Последние запуски</h2>
+    <div class="runs-actions">
+      <a href="/projects/{{ project.project_id }}" class="btn btn-outline btn-sm">⟳ Обновить</a>
+    </div>
+  </div>
+
+  {# Filters #}
+  <div class="run-filters" id="runFilters">
+    <button class="filter-btn active" data-filter="all">Все</button>
+    <button class="filter-btn" data-filter="running">Активные</button>
+    <button class="filter-btn" data-filter="success">Успешные</button>
+    <button class="filter-btn" data-filter="failed">Ошибки</button>
+  </div>
+
+  {# Search #}
+  <div class="run-search">
+    <input type="text" id="runSearch" placeholder="Поиск по ID, заголовку, входным данным…" oninput="filterRuns()">
+  </div>
+
+  {# Merged runs list #}
+  {% if merged_runs %}
+  <div id="runsList">
+    {% for r in merged_runs %}
+    {% set rs = r.remote_status %}
+    <div class="run-row" data-status="{{ rs }}" data-search="{{ r.id }} {{ r.remote_id }} {{ r.title }} {{ r.input_summary }}">
+      <div class="run-status">
+        {% if r.source == 'remote' %}
+        <span class="tag tag-{{ 'success' if rs == 'success' else 'running' if rs in ('running','pending') else 'failed' if rs == 'failed' else 'cancelled' if rs == 'cancelled' else 'pending' }}">
+          {{ remote_ru[rs] or rs }}
+        </span>
+        {% else %}
+        {% set os = r.orchestration_status %}
+        <span class="tag tag-{{ 'success' if os == 'linked' else 'running' if os in ('submitting','sync_pending') else 'failed' if os in ('sync_error','detached') else 'pending' }}">
+          {{ orch_ru[os] or os }}
+        </span>
+        {% if rs != 'unknown' %}
+        <span class="tag tag-sm tag-{{ 'success' if rs == 'success' else 'running' if rs in ('running','pending') else 'failed' if rs == 'failed' else 'cancelled' }}" style="font-size: .65rem;">
+          {{ remote_ru[rs] or rs }}
+        </span>
+        {% endif %}
+        {% endif %}
+      </div>
+      <div>
+        {% if r.id %}
+        <a href="/runs/{{ r.id }}" class="run-id">{{ r.id[:16] }}</a>
+        {% elif r.remote_id %}
+        <span class="run-id mono" title="Внешний ID (нет локального запуска)">{{ r.remote_id[:16] }}</span>
+        {% endif %}
+        {% if r.title %}
+        <div style="font-size: .75rem; color: var(--text-muted);">{{ r.title[:40] }}</div>
+        {% endif %}
+      </div>
+      <div>
+        {% if r.source == 'merged' %}
+        <span class="tag tag-merged tag-sm">связан</span>
+        {% elif r.source == 'remote' %}
+        <span class="tag tag-remote tag-sm">сервер</span>
+        {% else %}
+        <span class="tag tag-local tag-sm">Marshrutka</span>
+        {% endif %}
+        {% if r.sync_error %}
+        <span style="font-size: .65rem; color: var(--failed-text); display: block;">{{ r.sync_error[:30] }}</span>
+        {% endif %}
+      </div>
+      <div class="run-time">
+        {% if r.started_at %}
+        {% if r.started_at is string %}
+        {{ r.started_at[:16] }}
+        {% else %}
+        {{ r.started_at | moscow_time('%d.%m %H:%M') }}
+        {% endif %}
+        {% else %}—{% endif %}
+        {% if r.finished_at and r.started_at %}
+        {% if r.finished_at is not string and r.started_at is not string %}
+        · {% set dur = (r.finished_at - r.started_at).total_seconds() %}
+        {{ '%dм'|format(dur // 60) }}{{ '%dс'|format(dur % 60) }}
+        {% endif %}
+        {% endif %}
+      </div>
+      <div class="run-input" title="{{ r.input_summary }}">{{ r.input_summary[:40] or '—' }}</div>
+      <div class="run-actions">
+        {% if r.id %}
+        <a href="/runs/{{ r.id }}" class="btn btn-ghost btn-sm">⟳</a>
+        {% elif r.remote_id %}
+        <a href="/projects/{{ project.project_id }}" class="btn btn-ghost btn-sm" title="Внешний запуск">⊙</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty-state">Нет запусков. Заполните форму ниже и нажмите «Запустить», или синхронизируйтесь с сервером проекта.</div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function filterRuns() {
+  var activeFilter = document.querySelector('.filter-btn.active');
+  var filter = activeFilter ? activeFilter.dataset.filter : 'all';
+  var query = (document.getElementById('runSearch').value || '').toLowerCase();
+
+  document.querySelectorAll('.run-row').forEach(function(row) {
+    var status = row.dataset.status;
+    var search = (row.dataset.search || '').toLowerCase();
+    var matchFilter = filter === 'all' ||
+      (filter === 'running' && (status === 'running' || status === 'pending' || status === 'submitting')) ||
+      (filter === status);
+    var matchSearch = !query || search.indexOf(query) !== -1;
+    row.style.display = matchFilter && matchSearch ? '' : 'none';
+  });
+}
+
+document.getElementById('runFilters').addEventListener('click', function(e) {
+  var btn = e.target.closest('.filter-btn');
+  if (!btn) return;
+  document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  filterRuns();
+});
+</script>
+
+{# ── SECONDARY SECTION: Manual run form (compact) ── #}
+<div class="card">
+  <div class="flex" style="justify-content: space-between; align-items: center;">
+    <div class="card-title" style="margin-bottom: 0;">Ручной запуск</div>
+    {% set basic = project.config.get('basic_fields', []) %}
+    {% if basic and project.input_fields|length > basic|length %}
+    <label class="flex" style="font-size: .78rem; color: var(--text-muted); cursor: pointer;">
+      <input type="checkbox" id="modeToggle" onchange="toggleAdvancedMode()" style="margin-right: .3rem;">
+      Расширенные
+    </label>
+    {% endif %}
+  </div>
+  <form action="/projects/{{ project.project_id }}/run" method="POST" style="margin-top: .75rem;">
+    {% for field in project.input_fields %}
+    {% set has_advanced = basic and project.input_fields|length > basic|length %}
+    {% set is_basic = not basic or field.key in basic %}
+    <div class="form-group field-group {% if has_advanced and not is_basic %}field-advanced{% endif %}" {% if has_advanced and not is_basic %}style="display: none;"{% endif %}>
+      <label class="form-label" for="{{ field.key }}">{{ field.label }}{% if field.required %} <span style="color: var(--failed-text);">*</span>{% endif %}</label>
+      {% if field.type == "textarea" %}
+      <textarea id="{{ field.key }}" name="{{ field.key }}" {% if field.required %}required{% endif %} placeholder="{{ field.placeholder }}">{{ field.default or '' }}</textarea>
+      {% elif field.type == "checkbox" %}
+      <div class="flex">
+        <input type="checkbox" id="{{ field.key }}" name="{{ field.key }}" value="true" {% if field.default %}checked{% endif %}>
+        <label for="{{ field.key }}" class="form-label" style="margin: 0;">{{ field.label }}</label>
+      </div>
+      {% elif field.type == "select" %}
+      <select id="{{ field.key }}" name="{{ field.key }}">
+        {% for opt in field.options %}
+        <option value="{{ opt }}" {% if field.default == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <input type="{{ field.type }}" id="{{ field.key }}" name="{{ field.key }}" {% if field.required %}required{% endif %} placeholder="{{ field.placeholder }}" value="{{ field.default or '' }}">
+      {% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-primary mt-1">▶ Запустить</button>
+  </form>
+</div>
+
+{% if basic and project.input_fields|length > basic|length %}
+<script>
+function toggleAdvancedMode() {
+  var els = document.querySelectorAll('.field-advanced');
+  var show = document.getElementById('modeToggle').checked;
+  els.forEach(function(el) { el.style.display = show ? '' : 'none'; });
+}
+</script>
+{% endif %}
+
+{# ── Schedules card ── #}
+<div class="card">
+  <div class="card-title">Расписание</div>
+  <form action="/schedules/create" method="POST" class="card-section">
+    <input type="hidden" name="project_id" value="{{ project.project_id }}">
+    <div class="form-group">
+      <label class="form-label" for="cron">Cron-выражение</label>
+      <input type="text" id="cron" name="cron_expression" placeholder="*/30 * * * *" required>
+      <div class="form-hint">Стандартный 5-польный синтаксис cron.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="sched-title">Название</label>
+      <input type="text" id="sched-title" name="title" placeholder="Каждые 30 минут">
+    </div>
+    <div class="flex mb-1">
+      <input type="checkbox" id="sched-enabled" name="enabled" checked>
+      <label class="form-label" for="sched-enabled" style="margin: 0;">Активно</label>
+    </div>
+    <button type="submit" class="btn btn-outline">Добавить расписание</button>
+  </form>
+  {% if schedules %}
+  <div class="table-wrap">
+  <table>
+    <tr><th>Название</th><th>Cron</th><th>Статус</th><th></th></tr>
+    {% for s in schedules %}
+    <tr>
+      <td style="font-size: .83rem;">{{ s.title or s.schedule_id[:12] }}</td>
+      <td class="mono">{{ s.cron_expression }}</td>
+      <td><span class="tag tag-{{ 'success' if s.enabled else 'pending' }}">{{ 'активно' if s.enabled else 'приостановлено' }}</span></td>
+      <td>
+        <form action="/schedules/{{ s.schedule_id }}/delete" method="POST" style="display:inline;">
+          <button class="btn btn-danger btn-sm">Удалить</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <div class="empty-state">Расписаний пока нет.</div>
+  {% endif %}
+</div>
+
+{# ── Jobs card ── #}
+<div class="card">
+  <div class="card-title">Задачи</div>
+  {% if jobs %}
+  {% for j in jobs %}
+  <div class="flex" style="justify-content: space-between; padding: .45rem 0; border-bottom: 1px solid var(--border);">
+    <div>
+      <div style="font-size: .87rem; font-weight: 500;">{{ j.title }}</div>
+      <div style="font-size: .75rem; color: var(--text-light);">
+        <span class="mono">{{ j.job_id }}</span>
+        {% if j.manual_run_allowed %} · ручной{% endif %}
+        {% if j.cron_allowed %} · cron{% endif %}
+      </div>
+    </div>
+    <span class="tag tag-{{ 'success' if j.enabled else 'pending' }}">{{ 'вкл' if j.enabled else 'выкл' }}</span>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty-state">Задачи не настроены.</div>
+  {% endif %}
+</div>
+
+{# ── Publish bindings card ── #}
+<div class="card">
+  <div class="card-title">Публикация</div>
+  {% if project.publish_bindings %}
+  {% for binding in project.publish_bindings %}
+  {% set p = profiles|selectattr('profile_id', 'equalto', binding.profile_id)|first %}
+  <div class="flex" style="justify-content: space-between; padding: .45rem 0; border-bottom: 1px solid var(--border);">
+    <div>
+      <div style="font-size: .87rem; font-weight: 500;">{{ p.display_name if p else binding.profile_id }}</div>
+      <div style="font-size: .75rem; color: var(--text-light);">
+        {% if p %}<span class="platform-badge platform-{{ p.platform.value }}">{{ p.platform.value }}</span>{% endif %}
+        {% if binding.is_default %}<span class="tag tag-pending" style="font-size: .7rem;">по умолчанию</span>{% endif %}
+      </div>
+    </div>
+    <span class="tag tag-{{ 'success' if binding.enabled else 'pending' }}">{{ 'активен' if binding.enabled else 'отключён' }}</span>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty-state">Профили публикации не привязаны.
+    <a href="/publish/profiles" style="color: var(--indigo);">Управлять профилями</a>
+  </div>
+  {% endif %}
+  <div class="mt-1">
+    <a href="/publish/profiles" class="btn btn-outline btn-sm">Управление профилями</a>
+  </div>
+</div>
+{% endblock %}

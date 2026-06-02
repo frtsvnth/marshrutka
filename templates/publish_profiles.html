@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Профили публикации{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="flex" style="justify-content: space-between; align-items: center;">
+    <div>
+      <h1>Профили публикации</h1>
+      <div class="description">Настройте профили для публикации short-video контента на различные платформы. Каждый профиль хранит учётные данные, настройки по умолчанию и параметры платформы.</div>
+    </div>
+    <a href="/publish/profiles/new" class="btn btn-primary">+ Новый профиль</a>
+  </div>
+</div>
+
+{% if not profiles %}
+<div class="card">
+  <div class="empty-state">Нет профилей публикации. Создайте первый профиль, чтобы настроить публикацию на YouTube, Instagram, VK Видео или Rutube.</div>
+</div>
+{% endif %}
+
+{# ── Platform quick filters ── #}
+<div class="run-filters" style="margin-bottom: 1rem;">
+  <button class="filter-btn active" data-filter="all" onclick="filterPlatform('all')">Все</button>
+  {% for p in platforms %}
+  <button class="filter-btn" data-filter="{{ p.value }}" onclick="filterPlatform('{{ p.value }}')">{{ platform_labels[p] }}</button>
+  {% endfor %}
+</div>
+
+{# ── Profile grid ── #}
+<div class="profile-grid" id="profileGrid">
+  {% for profile in profiles %}
+  {% set usage = profile_usage.get(profile.profile_id, []) %}
+  <div class="profile-card" data-platform="{{ profile.platform.value }}">
+    <div class="profile-top">
+      <div>
+        <div class="profile-name">{{ profile.display_name }}</div>
+        <div class="profile-platform">
+          <span class="platform-badge platform-{{ profile.platform.value }}">
+            {{ platform_labels[profile.platform] }}
+            {% if platform_short[profile.platform] %} · short-video{% endif %}
+          </span>
+        </div>
+      </div>
+      <span class="tag tag-{{ 'success' if profile.enabled else 'pending' }}">{{ 'активен' if profile.enabled else 'отключён' }}</span>
+    </div>
+    <div class="profile-meta">
+      <div>
+        {% if profile.is_ready %}
+        <span class="guide-status-ready">✓ готов к использованию</span>
+        {% else %}
+        <span class="guide-status-manual">требует настройки</span>
+        {% endif %}
+      </div>
+      {% if profile.channel_title %}
+      <div>Канал: {{ profile.channel_title }}</div>
+      {% endif %}
+      {% if usage %}
+      <div>Используется в: {{ usage|join(', ') }}</div>
+      {% endif %}
+      {% if profile.notes %}
+      <div style="font-style: italic;">{{ profile.notes[:80] }}</div>
+      {% endif %}
+    </div>
+    <div class="profile-actions">
+      <a href="/publish/profiles/{{ profile.profile_id }}/edit" class="btn btn-outline btn-sm">✎ Редактировать</a>
+      <form action="/publish/profiles/{{ profile.profile_id }}/toggle" method="POST" style="display:inline;">
+        <button class="btn btn-outline btn-sm">{{ 'Отключить' if profile.enabled else 'Включить' }}</button>
+      </form>
+      <form action="/publish/profiles/{{ profile.profile_id }}/delete" method="POST" style="display:inline;" onsubmit="return confirm('Удалить профиль «{{ profile.display_name }}»?')">
+        <button class="btn btn-danger btn-sm">Удалить</button>
+      </form>
+      <a href="/publish/guide/{{ profile.platform.value }}" class="btn btn-ghost btn-sm">?</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# ── Platform guides index ── #}
+<div class="card mt-2">
+  <div class="card-title">Инструкции по настройке платформ</div>
+  <div class="flex flex-wrap gap-2" style="margin-top: .5rem;">
+    <a href="/publish/guide/youtube" class="btn btn-outline" style="border-color: #fee2e2; color: #991b1b;">
+      YouTube Shorts
+    </a>
+    <a href="/publish/guide/instagram" class="btn btn-outline" style="border-color: #fce7f3; color: #9d174d;">
+      Instagram Reels
+    </a>
+    <a href="/publish/guide/vk_video" class="btn btn-outline" style="border-color: #dbeafe; color: #1e40af;">
+      VK Видео Клипы
+    </a>
+    <a href="/publish/guide/rutube" class="btn btn-outline" style="border-color: #dbeafe; color: #1e40af;">
+      Rutube Shorts
+    </a>
+  </div>
+</div>
+
+<script>
+function filterPlatform(platform) {
+  document.querySelectorAll('.filter-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.filter === platform);
+  });
+  document.querySelectorAll('.profile-card').forEach(function(card) {
+    card.style.display = (platform === 'all' || card.dataset.platform === platform) ? '' : 'none';
+  });
+}
+</script>
+
+{% endblock %}

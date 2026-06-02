@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Редактировать профиль' if profile else 'Новый профиль публикации' }}{% endblock %}
+{% block content %}
+
+<div class="breadcrumb">
+  <a href="/publish/profiles">Профили публикации</a>
+  / {{ 'Редактирование' if profile else 'Новый профиль' }}
+</div>
+
+<div class="page-header">
+  <h1>{{ 'Редактировать профиль' if profile else 'Новый профиль публикации' }}</h1>
+  <div class="description">Настройте учётные данные и параметры публикации для выбранной платформы.</div>
+</div>
+
+<form action="{{ '/publish/profiles/' + profile.profile_id + '/edit' if profile else '/publish/profiles/new' }}" method="POST">
+  <div class="card">
+    <div class="card-title">Основные настройки</div>
+    <div class="form-group">
+      <label class="form-label" for="display_name">Название профиля</label>
+      <input type="text" id="display_name" name="display_name" value="{{ profile.display_name if profile else '' }}" placeholder="YouTube — основной канал" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="platform">Платформа</label>
+      <select id="platform" name="platform" {{ 'disabled' if profile else '' }}>
+        {% for p in platforms %}
+        <option value="{{ p.key }}" {% if profile and profile.platform.value == p.key %}selected{% endif %}>
+          {{ p.label }}{% if p.short %} · Shorts / Reels / Клипы{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      {% if profile %}<input type="hidden" name="platform" value="{{ profile.platform.value }}">{% endif %}
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="enabled">
+        <input type="checkbox" id="enabled" name="enabled" {% if not profile or profile.enabled %}checked{% endif %}>
+        Профиль активен
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Канал / Аккаунт</div>
+    <div class="form-group">
+      <label class="form-label" for="channel_title">Название канала</label>
+      <input type="text" id="channel_title" name="channel_title" value="{{ profile.channel_title if profile else '' }}" placeholder="Название канала на платформе">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="channel_id">ID канала</label>
+      <input type="text" id="channel_id" name="channel_id" value="{{ profile.channel_id if profile else '' }}" placeholder="channel_id или идентификатор">
+      <div class="form-hint">Указывается, если доступен. Можно оставить пустым для ручной настройки.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Учётные данные</div>
+    <div class="form-group">
+      <label class="form-label" for="credentials_json">Credentials (JSON)</label>
+      <textarea id="credentials_json" name="credentials_json" placeholder='{"api_key": "...", "client_id": "..."}'>{{ profile.credentials | tojson_unicode if profile and profile.credentials else '' }}</textarea>
+      <div class="form-hint">Учётные данные в формате JSON. Для YouTube — OAuth client JSON. Для других платформ — API-ключи или токены.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Настройки публикации по умолчанию</div>
+    <div class="form-group">
+      <label class="form-label" for="title_template">Шаблон заголовка</label>
+      <input type="text" id="title_template" name="title_template" value="{{ profile.title_defaults.get('template', '') if profile else '' }}" placeholder="{{ '{{ title }} — Shorts #marshrutka' }}">
+      <div class="form-hint">Можно использовать {{ переменные }}.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="description_template">Шаблон описания</label>
+      <textarea id="description_template" name="description_template" placeholder="Описание по умолчанию">{{ profile.description_defaults.get('template', '') if profile else '' }}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="tags_defaults">Теги по умолчанию</label>
+      <input type="text" id="tags_defaults" name="tags_defaults" value="{{ profile.tags_defaults | join(', ') if profile and profile.tags_defaults else '' }}" placeholder="shorts, marshrutka, video">
+      <div class="form-hint">Через запятую.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="visibility">Видимость по умолчанию</label>
+      <select id="visibility" name="visibility">
+        <option value="public" {% if profile and profile.privacy_defaults.get('visibility') == 'public' %}selected{% endif %}>Публичный</option>
+        <option value="unlisted" {% if not profile or profile.privacy_defaults.get('visibility') == 'unlisted' %}selected{% endif %}>Доступ по ссылке</option>
+        <option value="private" {% if profile and profile.privacy_defaults.get('visibility') == 'private' %}selected{% endif %}>Приватный</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">
+        <input type="checkbox" id="shorts_enabled" name="shorts_enabled" {% if profile and profile.shorts_defaults.get('enabled') %}checked{% endif %}>
+        Short-video формат по умолчанию
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Заметки</div>
+    <div class="form-group">
+      <textarea id="notes" name="notes" placeholder="Внутренние заметки о профиле…">{{ profile.notes if profile else '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="flex gap-2">
+    <button type="submit" class="btn btn-primary">Сохранить профиль</button>
+    <a href="/publish/profiles" class="btn btn-outline">Отмена</a>
+    {% if profile %}
+    <a href="/publish/guide/{{ profile.platform.value }}" class="btn btn-ghost">Инструкция по настройке</a>
+    {% endif %}
+  </div>
+</form>
+
+{% endblock %}

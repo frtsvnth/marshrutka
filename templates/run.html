@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% block title %}Запуск {{ run.run_id[:12] }}{% endblock %}
+{% block content %}
+
+{% set orch = run.orchestration_status.value %}
+{% set remote_s = run.remote_status.value %}
+
+<div class="breadcrumb"><a href="/">Проекты</a> / <a href="/projects/{{ run.project_id }}">{{ project.display_name if project else run.project_id }}</a> / Запуск</div>
+
+<div class="page-header">
+  <div class="flex gap-2" style="justify-content: space-between; align-items: center;">
+    <div>
+      <h1 style="font-size: 1.1rem;">Запуск Marshrutka</h1>
+      <div class="flex gap-2 mt-1" style="font-size: .8rem; color: var(--text-muted);">
+        <span class="mono">{{ run.run_id }}</span>
+        {% if run.remote_job_id %}
+        <span>→ Job сервера: <span class="mono">{{ run.remote_job_id }}</span></span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex gap-1">
+      <span class="tag tag-lg tag-{{ 'success' if orch == 'linked' else 'running' if orch in ('submitting','sync_pending') else 'failed' if orch in ('sync_error','detached') else 'pending' }}">
+        {{ orch_labels.get(run.orchestration_status, orch) }}
+      </span>
+    </div>
+  </div>
+</div>
+
+{# ── Status overview: two status lines ── #}
+<div class="card">
+  <div class="card-title">Состояние запуска</div>
+  <div class="info-grid">
+    <span class="label">Локальный статус (Marshrutka)</span>
+    <span>
+      <span class="tag tag-{{ 'success' if orch == 'linked' else 'running' if orch in ('submitting','sync_pending') else 'failed' if orch in ('sync_error','detached') else 'pending' }}">
+        {{ orch_labels.get(run.orchestration_status, orch) }}
+      </span>
+      {% if run.sync_error %}
+      <span style="font-size: .78rem; color: var(--failed-text); margin-left: .5rem;">{{ run.sync_error }}</span>
+      {% endif %}
+    </span>
+
+    <span class="label">Статус на сервере проекта</span>
+    <span>
+      {% if run.remote_job_id %}
+      <span class="tag tag-{{ 'success' if remote_s == 'success' else 'running' if remote_s in ('running','pending') else 'failed' if remote_s == 'failed' else 'cancelled' if remote_s == 'cancelled' else 'pending' }}">
+        {{ remote_status_labels.get(run.remote_status, remote_s) }}
+      </span>
+      {% else %}
+      <span style="color: var(--text-light); font-size: .82rem;">Job ещё не создан на сервере</span>
+      {% endif %}
+    </span>
+
+    <span class="label">Job ID сервера</span>
+    <span>
+      {% if run.remote_job_id %}
+      <span class="mono" style="font-size: .85rem; font-weight: 600;">{{ run.remote_job_id }}</span>
+      {% else %}
+      <span style="color: var(--text-light);">—</span>
+      {% endif %}
+    </span>
+
+    <span class="label">Запуск Marshrutka</span>
+    <span class="mono" style="font-size: .82rem; color: var(--text-muted);">{{ run.run_id }}</span>
+
+    <span class="label">Создан</span>
+    <span>{{ run.created_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
+ 
+     {% if run.submitted_at %}
+     <span class="label">Отправлен на сервер</span>
+     <span>{{ run.submitted_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
+     {% endif %}
+ 
+     {% if run.last_sync_at %}
+     <span class="label">Последняя синхронизация</span>
+     <span>{{ run.last_sync_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
+     {% endif %}
+ 
+     {% if remote_details and remote_details.started_at is not none %}
+     <span class="label">Старт на сервере</span>
+     <span>{{ remote_details.started_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
+     {% endif %}
+ 
+     {% if remote_details and remote_details.finished_at is not none %}
+     <span class="label">Завершён на сервере</span>
+     <span>{{ remote_details.finished_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
+     {% endif %}
+
+    {% if run.last_sync_at %}
+    <span class="label">Последняя синхронизация</span>
+    <span>{{ run.last_sync_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+    {% endif %}
+
+    {% if remote_details and remote_details.started_at is not none %}
+    <span class="label">Старт на сервере</span>
+    <span>{{ remote_details.started_at.strftime('%Y-%m-%d %H:%M:%S') if remote_details.started_at is not string else remote_details.started_at }}</span>
+    {% endif %}
+
+    {% if remote_details and remote_details.finished_at is not none %}
+    <span class="label">Завершён на сервере</span>
+    <span>{{ remote_details.finished_at.strftime('%Y-%m-%d %H:%M:%S') if remote_details.finished_at is not string else remote_details.finished_at }}</span>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Input payload ── #}
+<div class="card">
+  <div class="card-title">Входные данные</div>
+  <pre class="json">{{ run.input | tojson_unicode }}</pre>
+</div>
+
+{# ── Remote job details (primary) ── #}
+{% if remote_details %}
+<div class="card" style="border-color: var(--indigo-light);">
+  <div class="card-title" style="color: var(--indigo-dark);">
+    Данные с сервера проекта
+    {% if remote_details.synced_at %}
+    <span style="font-size: .72rem; font-weight: 400; color: var(--text-light); margin-left: .5rem;">
+      синхр. {{ remote_details.synced_at | moscow_time('%H:%M:%S') }}
+    </span>
+    {% endif %}
+  </div>
+
+  {% set rd = remote_details %}
+
+  {# Steps #}
+  {% if rd.steps %}
+  <div class="card-section">
+    <div style="font-size: .82rem; font-weight: 600; margin-bottom: .4rem;">Шаги пайплайна</div>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Шаг</th><th>Статус</th><th>Ошибка</th></tr>
+      {% for step in rd.steps %}
+      <tr>
+        <td>{{ step.get('step', step.get('name', '?')) }}</td>
+        <td>
+          {% set st = step.get('status', '?') %}
+          <span class="tag tag-{{ 'success' if st in ('ok','success','done') else 'failed' if st in ('error','failed') else 'running' if st in ('running','in_progress') else 'pending' }}">
+            {{ st }}
+          </span>
+        </td>
+        <td style="font-size: .8rem; color: var(--failed-text);">{{ step.get('error', '') }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Progress bar #}
+  {% set p = rd.progress %}
+  {% if p and p.get('total', 0) > 0 %}
+  <div class="card-section">
+    <div style="font-size: .82rem; font-weight: 600; margin-bottom: .35rem;">
+      Прогресс: {{ p.get('step', '?') }}
+      {% if p.get('message') %}
+      <span style="font-weight: 400; color: var(--text-muted);">— {{ p['message'] }}</span>
+      {% endif %}
+    </div>
+    {% set pct = (p.get('current', 0) / p.get('total', 1) * 100) | round %}
+    <div style="height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-bottom: .2rem;">
+      <div style="height: 100%; width: {{ pct }}%; background: var(--indigo); border-radius: 3px; transition: width .5s;"></div>
+    </div>
+    <div style="font-size: .75rem; color: var(--text-muted);">шаг {{ p.get('current', 0) }} из {{ p.get('total', 0) }}</div>
+  </div>
+  {% endif %}
+
+  {# Artifacts #}
+  {% if normalized_artifacts %}
+  <div class="card-section">
+    <div style="font-size: .82rem; font-weight: 600; margin-bottom: .5rem;">Артефакты ({{ normalized_artifacts|length }})</div>
+    <div style="display: flex; flex-direction: column; gap: .25rem;">
+    {% for art in normalized_artifacts %}
+      <div style="display: flex; align-items: center; padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);">
+        <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: .5rem;">
+          <span style="font-size: .85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ art.filename }}</span>
+          <span class="tag tag-pending" style="font-size: .65rem; background: #f3f4f6; color: #6b7280; flex-shrink: 0;">{{ art.extension or '?' }}</span>
+          <span style="font-size: .72rem; color: var(--text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; max-width: 140px;" title="key: {{ art.key }}">{{ art.key }}</span>
+        </div>
+        <div style="flex-shrink: 0; display: flex; gap: .3rem;">
+          {% if art.previewable %}
+          <button class="btn btn-sm btn-ghost" onclick="MarshrutkaPreview.open('{{ art.preview_kind }}','{{ art.preview_url }}','{{ art.filename }}')">👁 Preview</button>
+          {% endif %}
+          <a href="{{ art.download_url }}" class="btn btn-sm btn-outline" download>⬇ Скачать</a>
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# Warnings #}
+  {% if rd.warnings %}
+  <div class="card-section">
+    <details>
+      <summary>Предупреждения ({{ rd.warnings|length }})</summary>
+      <div style="font-size: .8rem; color: var(--cancelled-text); margin-top: .35rem;">
+        {% for w in rd.warnings %}<div>• {{ w }}</div>{% endfor %}
+      </div>
+    </details>
+  </div>
+  {% endif %}
+
+  {# Logs #}
+  {% if rd.logs %}
+  <div class="card-section">
+    <details>
+      <summary>Лог задачи</summary>
+      <div class="log-box mt-1">{{ rd.logs }}</div>
+    </details>
+  </div>
+  {% endif %}
+
+  {# Metadata #}
+  {% if rd.metadata %}
+  <div class="card-section">
+    <details>
+      <summary>Метаданные</summary>
+      <pre class="json mt-1">{{ rd.metadata | tojson_unicode }}</pre>
+    </details>
+  </div>
+  {% endif %}
+
+  {# Raw response #}
+  {% if rd.job_response %}
+  <div class="card-section">
+    <details>
+      <summary>Raw JSON ответа сервера</summary>
+      <pre class="json mt-1">{{ rd.job_response | tojson_unicode }}</pre>
+    </details>
+  </div>
+  {% endif %}
+</div>
+
+{% elif run.remote_job_id %}
+{# Remote job exists but details not fetched yet #}
+<div class="card" style="border-color: var(--amber-light);">
+  <div class="card-title" style="color: var(--cancelled-text);">
+    Детали с сервера проекта временно недоступны
+  </div>
+  <p style="font-size: .82rem; color: var(--text-muted);">
+    Remote job ID <span class="mono">{{ run.remote_job_id }}</span> существует, но получить детали не удалось.
+    Причины: сервер проекта может быть недоступен, job мог быть удалён, или требуется повторная синхронизация.
+  </p>
+  <div class="mt-1">
+    <a href="/projects/{{ run.project_id }}" class="btn btn-outline btn-sm">⟳ Вернуться к проекту и обновить</a>
+  </div>
+</div>
+{% else %}
+{# No remote job yet #}
+<div class="card" style="border-color: var(--amber-light);">
+  <div class="card-title" style="color: var(--cancelled-text);">Ожидание подтверждения от сервера</div>
+  <p style="font-size: .82rem; color: var(--text-muted);">
+    Запуск отправлен на сервер проекта, но remote job ID ещё не получен.
+    Статус может обновиться после синхронизации со стороны проекта.
+  </p>
+</div>
+{% endif %}
+
+{# ── Submit response (diagnostic) ── #}
+{% if run.submit_response %}
+<div class="card">
+  <div class="card-title">Ответ сервера на запрос запуска</div>
+  <pre class="json">{{ run.submit_response | tojson_unicode }}</pre>
+</div>
+{% endif %}
+
+{# ── Publish section (for successful runs) ── #}
+{% if run.remote_status.value == 'success' and profiles %}
+<div class="card" style="border-color: var(--success-bg);">
+  <div class="card-title" style="color: var(--success-text);">📤 Публикация</div>
+  {% if publish_reqs %}
+  <div class="mb-1">
+    <div style="font-size: .82rem; font-weight: 500; margin-bottom: .4rem;">Запросы на публикацию</div>
+    {% for pr in publish_reqs %}
+    <div class="flex" style="justify-content: space-between; padding: .35rem 0; border-bottom: 1px solid var(--border);">
+      <div>
+        <span class="platform-badge platform-{{ pr.platform.value }}">{{ pr.platform.value }}</span>
+        <span style="font-size: .82rem;">{{ pr.title[:50] or 'без названия' }}</span>
+      </div>
+      <div class="flex gap-1">
+        <span class="tag tag-{{ 'success' if pr.status == 'published' else 'running' if pr.status == 'pending' else 'pending' }}">
+          {{ {'draft':'черновик','pending':'в обработке','published':'опубликовано','failed':'ошибка'}[pr.status] or pr.status }}
+        </span>
+        {% if pr.published_at %}
+        <span style="font-size: .75rem; color: var(--text-muted);">{{ pr.published_at | moscow_time('%H:%M %d.%m') }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <details {% if not publish_reqs %}open{% endif %}>
+    <summary style="font-size: .82rem; font-weight: 500;">{{ 'Новая публикация' if publish_reqs else 'Опубликовать результат' }}</summary>
+    <form action="/publish/request" method="POST" style="margin-top: .65rem;">
+      <input type="hidden" name="run_id" value="{{ run.run_id }}">
+      <input type="hidden" name="project_id" value="{{ run.project_id }}">
+      <div class="form-group">
+        <label class="form-label" for="pub_profile">Профиль публикации</label>
+        <select id="pub_profile" name="profile_id" required>
+          <option value="">— выберите профиль —</option>
+          {% for p in profiles %}
+          {% if p.enabled %}
+          <option value="{{ p.profile_id }}" {% if run.publish_profile_id == p.profile_id %}selected{% endif %}>
+            {{ p.display_name }} ({{ p.platform.value }})
+          </option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <input type="hidden" name="platform" value="" id="pubPlatform">
+      <div class="form-group">
+        <label class="form-label" for="pub_title">Заголовок</label>
+        <input type="text" id="pub_title" name="title" placeholder="Заголовок для публикации" value="{{ run.input.get('title', run.input.get('news_text', ''))[:80] }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="pub_desc">Описание</label>
+        <textarea id="pub_desc" name="description" placeholder="Описание публикации"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="pub_hashtags">Хештеги</label>
+        <input type="text" id="pub_hashtags" name="hashtags" placeholder="shorts, marshrutka, video">
+        <div class="form-hint">Через запятую.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="pub_visibility">Видимость</label>
+        <select id="pub_visibility" name="visibility">
+          <option value="unlisted">Доступ по ссылке</option>
+          <option value="public">Публичный</option>
+          <option value="private">Приватный</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-success">📤 Отправить на публикацию</button>
+    </form>
+  </details>
+  <script>
+  document.getElementById('pub_profile')?.addEventListener('change', function() {
+    var opt = this.options[this.selectedIndex];
+    if (opt && opt.text) {
+      var match = opt.text.match(/\(([^)]+)\)/);
+      if (match) document.getElementById('pubPlatform').value = match[1];
+    }
+  });
+  </script>
+</div>
+{% endif %}
+
+{% set active_remote = remote_s in ('pending', 'running') %}
+{% if active_remote %}
+<script>
+(function() {
+  var pollInterval = setInterval(function() {
+    if (typeof loadContent === 'function') {
+      loadContent(location.pathname + location.search);
+    }
+  }, 15000);
+  window.addEventListener('beforeunload', function() {
+    clearInterval(pollInterval);
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

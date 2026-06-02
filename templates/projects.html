@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Проекты{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="flex" style="justify-content: space-between; align-items: center;">
+    <div>
+      <h1>Проекты</h1>
+      <div class="description">Контентные маршруты, доступные для запуска. У каждого проекта — своя форма ввода, цепочка задач и настройки публикации.</div>
+    </div>
+    <a href="/projects/new" class="btn btn-primary">+ Добавить проект</a>
+  </div>
+</div>
+
+{% if not projects %}
+<div class="card">
+  <div class="empty-state">Пока нет проектов. Нажмите «Добавить проект», чтобы создать первый маршрут.</div>
+</div>
+{% endif %}
+
+{% for p in projects %}
+<div class="card">
+  <div class="flex" style="justify-content: space-between; align-items: flex-start;">
+    <div>
+      <a href="/projects/{{ p.project_id }}" style="font-size: 1rem; font-weight: 600; color: var(--text);">{{ p.display_name }}</a>
+      <p style="color: var(--text-muted); font-size: .82rem; margin-top: .15rem; max-width: 480px;">{{ p.description[:260] }}{% if p.description|length > 260 %}…{% endif %}</p>
+    </div>
+    <span class="tag tag-{{ 'success' if p.enabled else 'pending' }}">{{ 'активен' if p.enabled else 'отключён' }}</span>
+  </div>
+  <div class="project-meta">
+    <span>{{ p.jobs|length }} {{ 'задача' if p.jobs|length == 1 else 'задачи' if p.jobs|length < 5 else 'задач' }}</span>
+    <span>{{ p.input_fields|length }} {{ 'поле' if p.input_fields|length == 1 else 'поля' if p.input_fields|length < 5 else 'полей' }}</span>
+    {% if p.integration.api_url %}
+    <span class="mono" style="font-size: .75rem;">{{ p.integration.api_url }}</span>
+    {% endif %}
+    {% if p.publish_bindings %}
+    <span>публикация: {{ p.publish_bindings|length }} {{ 'профиль' if p.publish_bindings|length == 1 else 'профиля' if p.publish_bindings|length < 5 else 'профилей' }}</span>
+    {% elif p.publish_targets %}
+    <span>публикация: {% for t in p.publish_targets %}{{ t.label }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

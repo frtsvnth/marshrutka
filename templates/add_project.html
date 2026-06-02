@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Новый проект{% endblock %}
+{% block content %}
+
+<div class="breadcrumb"><a href="/">Проекты</a> / Новый проект</div>
+
+<div class="page-header">
+  <h1>Новый проект</h1>
+  <div class="description">Создайте новый контентный маршрут с настройками интеграции, полями ввода и профилями публикации.</div>
+</div>
+
+<form action="/projects/new" method="POST">
+  {# ── Basic info ── #}
+  <div class="card">
+    <div class="card-title">Основная информация</div>
+    <div class="form-group">
+      <label class="form-label" for="project_id">ID проекта</label>
+      <input type="text" id="project_id" name="project_id" placeholder="my-project" required>
+      <div class="form-hint">Уникальный идентификатор, используется в URL и имени файла.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="display_name">Название</label>
+      <input type="text" id="display_name" name="display_name" placeholder="Мой проект" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="description">Описание</label>
+      <textarea id="description" name="description" placeholder="Что делает этот маршрут"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">
+        <input type="checkbox" name="enabled" checked>
+        Проект активен
+      </label>
+    </div>
+  </div>
+
+  {# ── Integration settings ── #}
+  <div class="card">
+    <div class="card-title">Интеграция с сервером</div>
+    <div class="form-group">
+      <label class="form-label" for="integration_type">Тип интеграции</label>
+      <select id="integration_type" name="integration_type">
+        <option value="api">API (HTTP)</option>
+        <option value="cli">CLI (команда)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="api_url">API URL</label>
+      <input type="url" id="api_url" name="api_url" placeholder="http://localhost:8001">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="run_endpoint">Endpoint запуска</label>
+      <input type="text" id="run_endpoint" name="run_endpoint" value="/jobs" placeholder="/jobs">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="jobs_list_endpoint">Endpoint списка jobs</label>
+      <input type="text" id="jobs_list_endpoint" name="jobs_list_endpoint" value="/jobs" placeholder="/jobs">
+      <div class="form-hint">Для синхронизации списка запусков с сервера проекта.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="job_detail_endpoint">Endpoint деталей job</label>
+      <input type="text" id="job_detail_endpoint" name="job_detail_endpoint" value="/jobs/{job_id}" placeholder="/jobs/{job_id}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">
+        <input type="checkbox" name="auto_sync" checked>
+        Авто-синхронизация после запуска
+      </label>
+    </div>
+  </div>
+
+  {# ── Input fields ── #}
+  <div class="card">
+    <div class="card-title">Поля ввода</div>
+    <div id="fieldsContainer"></div>
+    <input type="hidden" name="field_count" value="0" id="fieldCount">
+    <button type="button" class="btn btn-outline btn-sm" onclick="addField()">+ Добавить поле</button>
+  </div>
+
+  {# ── Publishing profiles ── #}
+  <div class="card">
+    <div class="card-title">Профили публикации</div>
+    {% if all_profiles %}
+    <div class="form-group">
+      <label class="form-label">Разрешённые профили</label>
+      <div class="flex flex-wrap" style="gap: .5rem; margin-top: .25rem;">
+        {% for p in all_profiles %}
+        <label style="display: flex; align-items: center; gap: .3rem; padding: .35rem .6rem; border: 1px solid var(--border); border-radius: 100px; font-size: .8rem; cursor: pointer;">
+          <input type="checkbox" name="pub_profile" value="{{ p.profile_id }}" onchange="updatePubList()">
+          <span class="platform-badge platform-{{ p.platform.value }}" style="font-size: .7rem;">{{ p.platform.value }}</span>
+          {{ p.display_name }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <input type="hidden" name="publish_profiles" id="publishProfilesInput" value="">
+    <div class="form-group">
+      <label class="form-label" for="default_publish_profile">Профиль по умолчанию</label>
+      <select id="default_publish_profile" name="default_publish_profile">
+        <option value="">— не выбран —</option>
+        {% for p in all_profiles %}
+        <option value="{{ p.profile_id }}">{{ p.display_name }} ({{ p.platform.value }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <div class="empty-state">Нет доступных профилей публикации. <a href="/publish/profiles" style="color: var(--indigo);">Создать профиль</a></div>
+    {% endif %}
+  </div>
+
+  {# ── Additional options ── #}
+  <div class="card">
+    <div class="card-title">Дополнительно</div>
+    <div class="form-group">
+      <label class="form-label">
+        <input type="checkbox" name="cron_enabled">
+        Cron-запуски разрешены
+      </label>
+    </div>
+    <div class="form-hint" style="margin-top: .25rem;">
+      Публикация настраивается через профили публикации.
+      <a href="/publish/profiles" style="color: var(--indigo);">Управлять профилями</a>
+    </div>
+  </div>
+
+  <div class="flex gap-2">
+    <button type="submit" class="btn btn-primary">Создать проект</button>
+    <a href="/" class="btn btn-outline">Отмена</a>
+  </div>
+</form>
+
+<script>
+var fieldIdx = 0;
+function addField() {
+  var container = document.getElementById('fieldsContainer');
+  var idx = fieldIdx++;
+  var html = '<div class="field-row" style="border: 1px solid var(--border); border-radius: 12px; padding: .75rem; margin-bottom: .5rem;">' +
+    '<div class="flex gap-1" style="align-items: flex-end;">' +
+    '<div class="form-group" style="flex: 1;"><label class="form-label">Ключ</label><input type="text" name="field_key_' + idx + '"></div>' +
+    '<div class="form-group" style="flex: 2;"><label class="form-label">Название</label><input type="text" name="field_label_' + idx + '"></div>' +
+    '<div class="form-group" style="flex: 1;"><label class="form-label">Тип</label><select name="field_type_' + idx + '">' +
+    '<option value="text">text</option><option value="textarea">textarea</option><option value="checkbox">checkbox</option><option value="select">select</option><option value="url">url</option>' +
+    '</select></div></div>' +
+    '<div class="flex gap-1"><div class="form-group" style="flex: 1;"><label class="form-label">Placeholder</label><input type="text" name="field_placeholder_' + idx + '"></div>' +
+    '<div class="form-group" style="flex: 1;"><label class="form-label">Значение по умолч.</label><input type="text" name="field_default_' + idx + '"></div>' +
+    '<div class="form-group" style="flex: 1;"><label class="form-label">Опции</label><input type="text" name="field_options_' + idx + '"></div></div>' +
+    '<label><input type="checkbox" name="field_req_' + idx + '"> обязательное</label>' +
+    '</div>';
+  container.insertAdjacentHTML('beforeend', html);
+  document.getElementById('fieldCount').value = fieldIdx;
+}
+
+function updatePubList() {
+  var checked = document.querySelectorAll('input[name="pub_profile"]:checked');
+  var ids = Array.from(checked).map(function(cb) { return cb.value; });
+  document.getElementById('publishProfilesInput').value = ids.join(',');
+}
+</script>
+
+{% endblock %}
