@@ -176,3 +176,7 @@ async def list_publish_requests(run_id: str | None = None):
 async def create_publish_request(req: PublishRequest):
     publish_requests_store.save(req, key_attr="request_id")
     return req
+
+
+from agent.router import router as agent_router
+router.include_router(agent_router)

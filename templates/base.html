@@ -183,6 +183,26 @@ body {
 }
 .ai-composer[data-disabled] textarea { cursor: not-allowed; }
 
+/* AI Chat Messages */
+.ai-message { margin-bottom: .75rem; animation: fadeInMsg .2s ease; }
+@keyframes fadeInMsg { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.ai-message.user { display: flex; justify-content: flex-end; }
+.ai-message.assistant { display: flex; justify-content: flex-start; }
+.ai-message .bubble {
+  max-width: 88%; padding: .55rem .8rem; border-radius: 14px;
+  font-size: .82rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+}
+.ai-message.user .bubble { background: var(--indigo); color: #fff; border-radius: 14px 14px 4px 14px; }
+.ai-message.assistant .bubble { background: rgba(255,255,255,.08); color: rgba(255,255,255,.88); border-radius: 14px 14px 14px 4px; }
+.ai-message .bubble.streaming::after { content: "▋"; animation: blink .7s infinite; margin-left: 1px; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+.ai-tool-indicator { font-size: .72rem; color: var(--amber); margin: .2rem 0; padding: 0 .2rem; opacity: .85; }
+.ai-welcome { padding: .25rem 0; }
+.ai-composer button { cursor: pointer !important; color: rgba(255,255,255,.7) !important; }
+.ai-composer button:hover { background: rgba(255,255,255,.15) !important; color: #fff !important; }
+.ai-composer textarea:not([disabled]) { color: rgba(255,255,255,.88) !important; cursor: text !important; }
+.ai-composer textarea:not([disabled]):focus { border-color: rgba(255,255,255,.3) !important; outline: none; }
+
 /* ── Cards ── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.35rem 1.5rem; margin-bottom: 1rem; }
 .card-title { font-size: .9rem; font-weight: 600; margin-bottom: .85rem; color: var(--text); }
@@ -424,23 +444,25 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
       </div>
       <div class="ai-panel-sub">Помощник для контентных маршрутов</div>
     </div>
-    <div class="ai-panel-body">
-      <div class="ai-dots">
-        <span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>
-      </div>
-      <div class="ai-badge">⚙ В разработке</div>
-      <p>Здесь появится чат с AI-ассистентом, который поможет запускать маршруты, проверять статусы и готовить контент к публикации.</p>
-      <div class="ai-chips">
-        <span class="ai-chip active">запуск маршрутов</span>
-        <span class="ai-chip">проверка статусов</span>
-        <span class="ai-chip">логи и артефакты</span>
-        <span class="ai-chip">публикация</span>
+    <div class="ai-panel-body" id="aiChatMessages">
+      <div class="ai-welcome">
+        <div class="ai-dots">
+          <span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>
+        </div>
+        <div class="ai-badge">⚡ Маршал активен</div>
+        <p>Привет! Я Маршал, твой AI-ассистент в Маршрутке.<br>
+        Спроси меня что угодно: напиши текст, проверь проект, запусти пайплайн.</p>
+        <div class="ai-chips" id="aiQuickChips">
+          <span class="ai-chip" onclick="aiSendQuick(this)">📋 Список проектов</span>
+          <span class="ai-chip" onclick="aiSendQuick(this)">✍️ Текст на 160 слов</span>
+          <span class="ai-chip" onclick="aiSendQuick(this)">📊 Последние запуски</span>
+        </div>
       </div>
     </div>
     <div class="ai-panel-footer">
-      <div class="ai-composer" data-disabled>
-        <textarea rows="1" placeholder="Чат с ассистентом скоро появится…" disabled></textarea>
-        <button disabled>➤</button>
+      <div class="ai-composer">
+        <textarea rows="1" placeholder="Спроси Маршала…"></textarea>
+        <button>➤</button>
       </div>
     </div>
   </aside>
@@ -628,6 +650,154 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
     div.appendChild(document.createTextNode(str));
     return div.innerHTML;
   }
+})();
+</script>
+
+<script>
+(function() {
+  var messagesEl = document.getElementById('aiChatMessages');
+  var textarea = document.querySelector('.ai-composer textarea');
+  var sendBtn = document.querySelector('.ai-composer button');
+  var chatHistory = [];
+
+  function hideWelcome() {
+    var w = messagesEl.querySelector('.ai-welcome');
+    if (w) w.remove();
+  }
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function createMessageEl(role) {
+    var div = document.createElement('div');
+    div.className = 'ai-message ' + role;
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    div.appendChild(bubble);
+    messagesEl.appendChild(div);
+    return bubble;
+  }
+
+  function addToolIndicator(text) {
+    var div = document.createElement('div');
+    div.className = 'ai-tool-indicator';
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  async function sendMessage(text) {
+    if (!text.trim()) return;
+
+    hideWelcome();
+
+    var userBubble = createMessageEl('user');
+    userBubble.textContent = text;
+    chatHistory.push({role: 'user', content: text});
+    scrollToBottom();
+
+    var asstBubble = createMessageEl('assistant');
+    asstBubble.classList.add('streaming');
+    scrollToBottom();
+
+    textarea.disabled = true;
+    sendBtn.disabled = true;
+
+    var fullResponse = '';
+    var inToolCall = false;
+
+    try {
+      var resp = await fetch('/api/agent/chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          message: text,
+          history: chatHistory.slice(-20)
+        })
+      });
+
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+      var reader = resp.body.getReader();
+      var decoder = new TextDecoder();
+      var sseBuffer = '';
+
+      while (true) {
+        var result = await reader.read();
+        if (result.done) break;
+
+        sseBuffer += decoder.decode(result.value, {stream: true});
+        var lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop();
+
+        for (var line of lines) {
+          line = line.trim();
+          if (!line.startsWith('data: ')) continue;
+          var data = line.slice(6).trim();
+          if (data === '[DONE]') break;
+
+          try {
+            var parsed = JSON.parse(data);
+            if (parsed.error) {
+              asstBubble.textContent = '❌ Ошибка: ' + parsed.error;
+              break;
+            }
+            if (parsed.tool_indicator) {
+              addToolIndicator(parsed.tool_indicator);
+              continue;
+            }
+            if (parsed.content) {
+              fullResponse += parsed.content;
+              asstBubble.textContent = fullResponse;
+              scrollToBottom();
+            }
+          } catch(e) {}
+        }
+      }
+    } catch (err) {
+      asstBubble.textContent = '❌ Ошибка соединения: ' + err.message;
+    } finally {
+      asstBubble.classList.remove('streaming');
+      textarea.disabled = false;
+      sendBtn.disabled = false;
+      textarea.focus();
+      scrollToBottom();
+    }
+
+    if (fullResponse.trim()) {
+      chatHistory.push({role: 'assistant', content: fullResponse});
+    }
+  }
+
+  function sendCurrentMessage() {
+    var text = textarea.value.trim();
+    if (text) {
+      textarea.value = '';
+      textarea.style.height = 'auto';
+      sendMessage(text);
+    }
+  }
+
+  textarea.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendCurrentMessage();
+    }
+  });
+
+  sendBtn.addEventListener('click', sendCurrentMessage);
+
+  textarea.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 80) + 'px';
+  });
+
+  window.aiSendQuick = function(el) {
+    var text = el.textContent.replace(/^[^\s]+\s/, '').trim();
+    sendMessage(text);
+  };
 })();
 </script>
 
