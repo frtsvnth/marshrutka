@@ -1,0 +1,40 @@
+/* AI panel chat styles — extracted from base.html for maintainability */
+
+.ai-message { margin-bottom: .75rem; animation: fadeInMsg .2s ease; }
+@keyframes fadeInMsg { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.ai-message.user { display: flex; justify-content: flex-end; }
+.ai-message.assistant { display: flex; justify-content: flex-start; }
+.ai-message .bubble {
+  max-width: 88%; padding: .55rem .8rem; border-radius: 14px;
+  font-size: .82rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+}
+.ai-message.user .bubble { background: var(--indigo); color: #fff; border-radius: 14px 14px 4px 14px; }
+.ai-message.assistant .bubble { background: rgba(255,255,255,.08); color: rgba(255,255,255,.88); border-radius: 14px 14px 14px 4px; }
+.ai-message .bubble.streaming::after { content: "▋"; animation: blink .7s infinite; margin-left: 1px; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+.ai-tool-indicator { font-size: .72rem; color: var(--amber); margin: .2rem 0; padding: 0 .2rem; opacity: .85; }
+
+.ai-tool-event {
+  display: flex; align-items: center; gap: .4rem;
+  font-size: .72rem; color: var(--amber); margin: .2rem 0 .4rem; padding: .25rem .5rem;
+  background: rgba(251,191,36,.08); border-radius: 8px; animation: fadeInMsg .2s ease;
+}
+.ai-tool-event .tool-icon { flex-shrink: 0; }
+.ai-tool-event .tool-label { font-weight: 600; }
+.ai-tool-event .tool-summary { color: rgba(255,255,255,.6); }
+
+.ai-error {
+  font-size: .78rem; color: #fca5a5; padding: .4rem .6rem;
+  background: rgba(239,68,68,.1); border-radius: 8px; margin: .2rem 0;
+}
+
+.ai-panel-body { padding: 1.25rem; flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.ai-panel-body::-webkit-scrollbar { width: 3px; }
+.ai-panel-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 3px; }
+
+.ai-welcome { padding: .25rem 0; }
+.ai-composer button { cursor: pointer !important; color: rgba(255,255,255,.7) !important; }
+.ai-composer button:hover { background: rgba(255,255,255,.15) !important; color: #fff !important; }
+.ai-composer textarea:not([disabled]) { color: rgba(255,255,255,.88) !important; cursor: text !important; }
+.ai-composer textarea:not([disabled]):focus { border-color: rgba(255,255,255,.3) !important; outline: none; }
+.ai-composer button:disabled { opacity: .4; cursor: not-allowed !important; }

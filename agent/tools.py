@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+from agent.models import ToolDefinition
 
 from registry import load_projects
 from storage import runs_store, schedules_store
@@ -133,3 +133,98 @@ TOOLS: dict[str, callable] = {
     "create_schedule": create_schedule,
     "get_schedules": get_schedules,
 }
+
+TOOL_DEFINITIONS: list[ToolDefinition] = [
+    ToolDefinition(
+        name="count_words",
+        description="Подсчитать количество слов, символов и предложений в тексте. Используй после генерации текста для проверки длины.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "Текст для подсчёта слов",
+                }
+            },
+            "required": ["text"],
+        },
+    ),
+    ToolDefinition(
+        name="get_projects",
+        description="Получить список всех проектов в системе.",
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+    ),
+    ToolDefinition(
+        name="get_recent_runs",
+        description="Получить последние запуски. Можно отфильтровать по project_id.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "ID проекта для фильтрации (опционально)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Максимальное количество запусков",
+                },
+            },
+        },
+    ),
+    ToolDefinition(
+        name="run_pipeline",
+        description="Запустить пайплайн проекта на удалённом сервере.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "ID проекта для запуска",
+                },
+                "input_data": {
+                    "type": "object",
+                    "description": "Входные данные для пайплайна",
+                },
+            },
+            "required": ["project_id"],
+        },
+    ),
+    ToolDefinition(
+        name="create_schedule",
+        description="Создать cron-расписание для проекта.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "ID проекта",
+                },
+                "cron_expression": {
+                    "type": "string",
+                    "description": "Cron-выражение (например, '0 9 * * 1-5')",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Название расписания (опционально)",
+                },
+            },
+            "required": ["project_id", "cron_expression"],
+        },
+    ),
+    ToolDefinition(
+        name="get_schedules",
+        description="Получить список расписаний. Можно отфильтровать по project_id.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "ID проекта для фильтрации (опционально)",
+                },
+            },
+        },
+    ),
+]

@@ -20,4 +20,3 @@ load_dotenv()
 ROUTERAI_BASE_URL = os.environ.get("ROUTERAI_BASE_URL", "https://routerai.ru/api/v1")
 ROUTERAI_API_KEY = os.environ.get("ROUTERAI_API_KEY", "")
 ROUTERAI_MODEL = os.environ.get("ROUTERAI_MODEL", "deepseek/deepseek-v4-flash")
-AGENT_MEMORY_FILE = DATA_DIR / "agent_memory.json"

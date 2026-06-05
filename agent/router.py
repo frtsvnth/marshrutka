@@ -1,62 +1,89 @@
 from __future__ import annotations
 
-import json
+import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
-from config import DATA_DIR
-from agent.memory import AgentMemory
+from agent.memory import MemoryManager
 from agent.harness import run_harness
+from agent.models import (
+    ChatRequest,
+    MemoryUpdate,
+    SSEEvent,
+)
+from agent.session import validate_session_id
 from registry import load_projects
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
-_memory = AgentMemory(DATA_DIR / "agent_memory.json")
+_memory_manager = MemoryManager()
 
 
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-
-class ChatRequest(BaseModel):
-    message: str
-    session_id: str = ""
-    history: list[ChatMessage] = []
+def _resolve_session(session_id: str) -> str:
+    try:
+        return validate_session_id(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.post("/chat")
 async def chat(req: ChatRequest):
-    history = [{"role": m.role, "content": m.content} for m in req.history]
+    if req.session_id:
+        session_id = _resolve_session(req.session_id)
+    else:
+        session_id = ""
+
+    resolved_id, _ = _memory_manager.get_session(session_id)
 
     async def event_stream():
         try:
-            async for chunk in run_harness(req.message, history, _memory):
-                if isinstance(chunk, str) and chunk.startswith("{"):
-                    try:
-                        parsed = json.loads(chunk)
-                        if "tool_indicator" in parsed:
-                            yield f"data: {json.dumps({'tool_indicator': parsed['tool_indicator']})}\n\n"
-                            continue
-                    except json.JSONDecodeError:
-                        pass
-                yield f"data: {json.dumps({'content': chunk})}\n\n"
+            yield SSEEvent(type="session", data={"session_id": resolved_id}).sse_format()
+
+            async for event in run_harness(req.message, _memory_manager, resolved_id):
+                yield event.sse_format()
+
+            yield SSEEvent(type="done").sse_format()
+
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        finally:
-            yield "data: [DONE]\n\n"
+            logger.exception("Chat error for session %s", resolved_id)
+            yield SSEEvent(type="error", data={
+                "message": "Внутренняя ошибка. Попробуйте ещё раз."
+            }).sse_format()
+            yield SSEEvent(type="done").sse_format()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/context")
-async def get_context():
+async def get_context(session_id: str = ""):
+    if not session_id:
+        projects = load_projects()
+        return {
+            "session_id": None,
+            "user_context": _memory_manager.profile.data,
+            "history_count": 0,
+            "project_count": len(projects),
+            "projects": [
+                {
+                    "project_id": p.project_id,
+                    "display_name": p.display_name,
+                    "enabled": p.enabled,
+                }
+                for p in projects
+            ],
+        }
+
+    sid = _resolve_session(session_id)
+    _, session_memory = _memory_manager.get_session(sid)
+
     projects = load_projects()
     return {
-        "user_context": _memory.data.get("user_context", {}),
-        "history_count": len(_memory.data.get("conversation_history", [])),
+        "session_id": sid,
+        "user_context": _memory_manager.profile.data,
+        "history_count": len(session_memory.data.get("messages", [])),
         "project_count": len(projects),
         "projects": [
             {
@@ -69,19 +96,19 @@ async def get_context():
     }
 
 
-class MemoryUpdate(BaseModel):
-    key: str
-    value: object
-
-
 @router.post("/memory")
 async def update_memory(body: MemoryUpdate):
-    _memory.update_user_context(body.key, body.value)
+    _memory_manager.profile.update(body.key, body.value)
     return {"ok": True}
 
 
 @router.delete("/history")
-async def clear_history():
-    _memory.data["conversation_history"] = []
-    _memory.save()
+async def clear_history(session_id: str = ""):
+    if not session_id:
+        raise HTTPException(status_code=422, detail="session_id is required")
+
+    sid = _resolve_session(session_id)
+    _, session_memory = _memory_manager.get_session(sid)
+    session_memory.clear()
+    _memory_manager.drop_session(sid)
     return {"ok": True}

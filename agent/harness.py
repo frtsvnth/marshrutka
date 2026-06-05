@@ -1,18 +1,31 @@
 from __future__ import annotations
 
 import json
-import re
+import logging
 from typing import AsyncGenerator
 
 import httpx
 
 from config import ROUTERAI_BASE_URL, ROUTERAI_API_KEY, ROUTERAI_MODEL
 from registry import load_projects
-from agent.memory import AgentMemory
-from agent.tools import TOOLS
+from agent.memory import MemoryManager
+from agent.models import (
+    SSEEvent,
+    build_openai_tools,
+    execute_tool,
+)
+
+logger = logging.getLogger(__name__)
+
+TOOL_DEFS = build_openai_tools()
 
 
-async def call_llm(messages: list[dict]) -> str:
+async def call_llm(
+    messages: list[dict],
+    tools: list[dict] | None = None,
+    stream: bool = False,
+    max_tokens: int = 4096,
+) -> dict:
     headers = {
         "Authorization": f"Bearer {ROUTERAI_API_KEY}",
         "Content-Type": "application/json",
@@ -20,10 +33,13 @@ async def call_llm(messages: list[dict]) -> str:
     body = {
         "model": ROUTERAI_MODEL,
         "messages": messages,
-        "stream": False,
-        "max_tokens": 4096,
+        "stream": stream,
+        "max_tokens": max_tokens,
     }
-    async with httpx.AsyncClient(timeout=httpx.Timeout(60)) as client:
+    if tools:
+        body["tools"] = tools
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(120)) as client:
         resp = await client.post(
             f"{ROUTERAI_BASE_URL.rstrip('/')}/chat/completions",
             headers=headers,
@@ -31,7 +47,9 @@ async def call_llm(messages: list[dict]) -> str:
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        choice = data["choices"][0]
+        msg = choice.get("message", {})
+        return msg
 
 
 async def call_llm_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
@@ -75,98 +93,70 @@ async def call_llm_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
                         pass
 
 
-def parse_tool_calls(text: str) -> list[dict]:
-    calls = []
-    for match in re.finditer(r"<tool_call>(.*?)</tool_call>", text, re.DOTALL):
-        try:
-            parsed = json.loads(match.group(1).strip())
-            if "tool" in parsed and "args" in parsed:
-                calls.append(parsed)
-        except (json.JSONDecodeError, KeyError):
-            pass
-    return calls
-
-
-def strip_tool_calls(text: str) -> str:
-    return re.sub(r"<tool_call>.*?</tool_call>", "", text, flags=re.DOTALL).strip()
-
-
-async def run_harness(user_message: str, history: list[dict], memory: AgentMemory) -> AsyncGenerator[str, None]:
+async def run_harness(
+    user_message: str,
+    memory_manager: MemoryManager,
+    session_id: str,
+    max_steps: int = 5,
+) -> AsyncGenerator[SSEEvent, None]:
     projects = load_projects()
-    system_prompt = memory.get_system_prompt(projects)
+    system_prompt = memory_manager.build_system_prompt(projects)
+    _, session_memory = memory_manager.get_session(session_id)
 
-    messages = [
+    recent = session_memory.get_recent()
+    messages: list[dict] = [
         {"role": "system", "content": system_prompt},
-        *history[-10:],
+        *recent,
         {"role": "user", "content": user_message},
     ]
 
-    max_steps = 5
-    accumulated_response = ""
+    yield SSEEvent(type="message_start")
+
+    final_content = ""
 
     for step in range(max_steps):
-        full_response = ""
-        in_tool_call = False
-        tool_call_buffer = ""
+        msg = await call_llm(messages, tools=TOOL_DEFS, stream=False)
 
-        async for chunk in call_llm_stream(messages):
-            full_response += chunk
-
-            if in_tool_call:
-                tool_call_buffer += chunk
-                if "</tool_call>" in tool_call_buffer:
-                    in_tool_call = False
-                    tool_call_buffer = ""
-                continue
-
-            if "<tool_call" in chunk:
-                idx = chunk.index("<tool_call")
-                visible = chunk[:idx]
-                if visible:
-                    yield visible
-                in_tool_call = True
-                tool_call_buffer = chunk[idx:]
-                continue
-
-            yield chunk
-
-        tool_calls = parse_tool_calls(full_response)
+        tool_calls = msg.get("tool_calls", [])
+        content = msg.get("content") or ""
 
         if not tool_calls:
-            accumulated_response += full_response
+            final_content = content or ""
             break
 
-        if step > 0:
-            accumulated_response += strip_tool_calls(full_response)
+        if tool_calls:
+            messages.append({"role": "assistant", "content": content or "", "tool_calls": tool_calls})
 
-        all_results = []
         for tc in tool_calls:
-            tool_name = tc.get("tool", "")
-            args = tc.get("args", {})
-            if tool_name not in TOOLS:
-                result = {"error": f"Unknown tool: {tool_name}"}
-            else:
-                try:
-                    maybe = TOOLS[tool_name](**args)
-                    if hasattr(maybe, '__await__'):
-                        result = await maybe
-                    else:
-                        result = maybe
-                except Exception as e:
-                    result = {"error": str(e)}
-            all_results.append(result)
+            tool_name = tc["function"]["name"]
+            try:
+                args = json.loads(tc["function"]["arguments"])
+            except (json.JSONDecodeError, KeyError):
+                args = {}
 
-            yield json.dumps({"tool_indicator": f"⚙️ {tool_name}: {_summarize_result(result)}"})
+            yield SSEEvent(type="tool_start", data={
+                "tool_name": tool_name,
+                "arguments": args,
+            })
 
-        messages.append({"role": "assistant", "content": full_response})
-        messages.append({"role": "tool", "content": json.dumps(all_results, ensure_ascii=False)})
+            result = await execute_tool(tool_name, args)
+            result_str = json.dumps(result, ensure_ascii=False)
 
+            yield SSEEvent(type="tool_result", data={
+                "tool_name": tool_name,
+                "result_summary": _summarize_result(result),
+            })
+
+            messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result_str})
     else:
-        accumulated_response += strip_tool_calls(full_response)
+        if not final_content:
+            final_content = "(агент не смог сформировать ответ)"
 
-    memory.add_to_history("user", user_message)
-    memory.add_to_history("assistant", strip_tool_calls(accumulated_response))
-    memory.save()
+    if final_content:
+        yield SSEEvent(type="message_done", data={"content": final_content})
+
+    session_memory.add_message("user", user_message)
+    session_memory.add_message("assistant", final_content)
 
 
 def _summarize_result(result: dict) -> str:
