@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +24,19 @@ class SSEEvent(BaseModel):
         return f"event: {self.type}\ndata: {body}\n\n"
 
 
+MAX_MESSAGE_LENGTH = 8000
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str = ""
+
+    @field_validator("message")
+    @classmethod
+    def _validate_message(cls, value: str) -> str:
+        if len(value) > MAX_MESSAGE_LENGTH:
+            raise ValueError(f"Message too long ({len(value)} > {MAX_MESSAGE_LENGTH})")
+        return value
 
 
 class MemoryUpdate(BaseModel):

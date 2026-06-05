@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from agent.models import ToolDefinition
+from agent.web_tools import search_web, search_youtube
 
 from registry import load_projects
 from storage import runs_store, schedules_store
@@ -132,6 +133,8 @@ TOOLS: dict[str, callable] = {
     "run_pipeline": run_pipeline,
     "create_schedule": create_schedule,
     "get_schedules": get_schedules,
+    "search_web": search_web,
+    "search_youtube": search_youtube,
 }
 
 TOOL_DEFINITIONS: list[ToolDefinition] = [
@@ -225,6 +228,42 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                     "description": "ID проекта для фильтрации (опционально)",
                 },
             },
+        },
+    ),
+    ToolDefinition(
+        name="search_web",
+        description="Искать информацию в интернете. Используй для поиска статей, новостей, референсов и любой свежей информации.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Поисковый запрос",
+                },
+                "num_results": {
+                    "type": "integer",
+                    "description": "Количество результатов (1-10)",
+                },
+            },
+            "required": ["query"],
+        },
+    ),
+    ToolDefinition(
+        name="search_youtube",
+        description="Искать видео на YouTube. Используй когда пользователь просит найти видео, ролики, ютуб-контент.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Поисковый запрос для поиска YouTube видео",
+                },
+                "num_results": {
+                    "type": "integer",
+                    "description": "Количество результатов (1-10)",
+                },
+            },
+            "required": ["query"],
         },
     ),
 ]

@@ -6,6 +6,8 @@
   var sendBtn = document.querySelector('.ai-composer button');
   var sessionId = '';
   var isStreaming = false;
+  var eventTrace = [];
+  var messages = [];
 
   function hideWelcome() {
     var w = messagesEl.querySelector('.ai-welcome');
@@ -26,10 +28,16 @@
     return bubble;
   }
 
+  function toolIcon(name) {
+    if (name.indexOf('youtube') !== -1) return '▶';
+    if (name.indexOf('search_web') !== -1 || name.indexOf('search') !== -1) return '🌐';
+    return '⚙';
+  }
+
   function addToolEvent(toolName, summary) {
     var div = document.createElement('div');
     div.className = 'ai-tool-event';
-    div.innerHTML = '<span class="tool-icon">⚙</span>' +
+    div.innerHTML = '<span class="tool-icon">' + toolIcon(toolName) + '</span>' +
       '<span class="tool-label">' + escapeHtml(toolName) + '</span>' +
       '<span class="tool-summary">' + escapeHtml(summary) + '</span>';
     messagesEl.appendChild(div);
@@ -59,12 +67,59 @@
     }
   }
 
+  function formatDialog() {
+    var lines = [];
+    for (var i = 0; i < messages.length; i++) {
+      var m = messages[i];
+      lines.push('[' + m.role + ']');
+      lines.push(m.content);
+      lines.push('');
+    }
+    return lines.join('\n').trim();
+  }
+
+  function formatTrace() {
+    return JSON.stringify({
+      session_id: sessionId,
+      exported_at: new Date().toISOString(),
+      message_count: messages.length,
+      event_count: eventTrace.length,
+      messages: messages,
+      events: eventTrace
+    }, null, 2);
+  }
+
+  window.copyDialog = function() {
+    var text = formatDialog();
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(function() {
+      flashButton('copyDialogBtn', '✓ Скопировано');
+    });
+  };
+
+  window.copyTrace = function() {
+    var text = formatTrace();
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(function() {
+      flashButton('copyTraceBtn', '✓ Скопировано');
+    });
+  };
+
+  function flashButton(id, msg) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    var orig = btn.textContent;
+    btn.textContent = msg;
+    setTimeout(function() { btn.textContent = orig; }, 2000);
+  }
+
   async function sendMessage(text) {
     if (!text.trim() || isStreaming) return;
 
     isStreaming = true;
     hideWelcome();
 
+    messages.push({role: 'user', content: text});
     var userBubble = createMessageEl('user');
     userBubble.textContent = text;
     scrollToBottom();
@@ -145,6 +200,8 @@
       }
 
       var type = data.type || evType;
+      var traceEntry = {type: type, data: data, ts: Date.now()};
+      eventTrace.push(traceEntry);
 
       switch (type) {
         case 'session':
@@ -164,7 +221,11 @@
           break;
 
         case 'tool_result':
-          addToolEvent(data.tool_name || 'инструмент', data.result_summary || 'выполнено');
+          var summary = data.result_summary || 'выполнено';
+          if (data.duration_ms) {
+            summary += ' (' + data.duration_ms + 'ms)';
+          }
+          addToolEvent(data.tool_name || 'инструмент', summary);
           break;
 
         case 'message_start':
@@ -193,6 +254,8 @@
   function sendCurrentMessage() {
     var text = textarea.value.trim();
     if (text) {
+      messages = [];
+      eventTrace = [];
       textarea.value = '';
       textarea.style.height = 'auto';
       sendMessage(text);

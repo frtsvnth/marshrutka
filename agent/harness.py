@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import AsyncGenerator
 
 import httpx
@@ -139,12 +140,15 @@ async def run_harness(
                 "arguments": args,
             })
 
+            t0 = time.monotonic()
             result = await execute_tool(tool_name, args)
+            duration_ms = int((time.monotonic() - t0) * 1000)
             result_str = json.dumps(result, ensure_ascii=False)
 
             yield SSEEvent(type="tool_result", data={
                 "tool_name": tool_name,
                 "result_summary": _summarize_result(result),
+                "duration_ms": duration_ms,
             })
 
             messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result_str})
@@ -174,4 +178,8 @@ def _summarize_result(result: dict) -> str:
         return f"расписание {result['schedule_id']}"
     if "schedules" in result:
         return f"{result['count']} расписаний"
+    if "results" in result:
+        count = len(result["results"])
+        q = result.get("query", "")
+        return f"найдено {count} результатов по запросу «{q}»"
     return "выполнено"

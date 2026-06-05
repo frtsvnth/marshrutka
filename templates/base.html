@@ -461,6 +461,10 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
       </div>
     </div>
     <div class="ai-panel-footer">
+      <div class="ai-actions">
+        <button class="ai-action-btn" id="copyDialogBtn" onclick="copyDialog()">📋 Копировать диалог</button>
+        <button class="ai-action-btn" id="copyTraceBtn" onclick="copyTrace()">🔍 Debug trace</button>
+      </div>
       <div class="ai-composer">
         <textarea rows="1" placeholder="Спроси Маршала…"></textarea>
         <button>➤</button>
