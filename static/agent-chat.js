@@ -2,6 +2,7 @@
   'use strict';
 
   var els = {};
+  var stepsById = {};
   var state = {
     sessionId: '',
     messages: [],
@@ -9,6 +10,7 @@
     isStreaming: false,
     draft: '',
     isOpen: true,
+    _stepCounter: 0,
   };
 
   var STORAGE_KEY = 'marshrutka_agent_state';
@@ -20,10 +22,6 @@
     els.textarea = document.querySelector('.ai-panel .ai-composer textarea');
     els.sendBtn = document.querySelector('.ai-composer .send-btn');
     els.voiceBtn = document.querySelector('.ai-composer .voice-btn');
-    els.copyDialogBtn = document.getElementById('copyDialogBtn');
-    els.copyTraceBtn = document.getElementById('copyTraceBtn');
-    els.downloadTraceBtn = document.getElementById('downloadTraceBtn');
-
     if (!els.messages) return;
     restoreState();
     setupListeners();
@@ -39,6 +37,7 @@
         state.eventTrace = s.eventTrace || [];
         state.sessionId = s.sessionId || '';
         state.draft = s.draft || '';
+        state._stepCounter = s._stepCounter || 0;
         if (els.textarea) {
           els.textarea.value = state.draft;
           autoResize(els.textarea);
@@ -46,9 +45,7 @@
         state.isOpen = s.isOpen !== false;
       }
     } catch (e) { /* ignore */ }
-    if (state.messages.length > 0) {
-      renderAllMessages();
-    }
+    if (state.messages.length > 0) renderAllMessages();
     if (state.isOpen && els.panel) {
       els.panel.classList.remove('Hidden');
     } else if (els.panel) {
@@ -64,6 +61,7 @@
         eventTrace: state.eventTrace,
         draft: els.textarea ? els.textarea.value : '',
         isOpen: state.isOpen,
+        _stepCounter: state._stepCounter,
       }));
     } catch (e) { /* ignore */ }
   }
@@ -73,20 +71,24 @@
     var container = els.messages;
     if (!container) return;
     hideWelcome();
-    var existing = container.querySelectorAll('.ai-message, .ai-tool-event, .ai-error, .ai-step');
-    for (var i = 0; i < existing.length; i++) {
-      existing[i].remove();
-    }
+    var all = container.querySelectorAll('.ai-message, .ai-tool-event, .ai-error, .ai-step');
+    for (var i = 0; i < all.length; i++) all[i].remove();
+
+    var currentStepId = null;
     for (var i = 0; i < state.messages.length; i++) {
       var m = state.messages[i];
-      if (m.type === 'tool_event') {
-        addToolEventDOM(m.toolName, m.summary);
-      } else if (m.type === 'step_start') {
-        /* skip — rendered implicitly */
+      if (m.type === 'step_start') {
+        currentStepId = m.stepId;
+        beginStep(currentStepId);
+      } else if (m.type === 'tool_event' && currentStepId !== null) {
+        addToolToStep(currentStepId, m.toolName, m.summary);
+      } else if (m.role === 'assistant' && m.stepId !== undefined) {
+        finishStepWithContent(m.stepId, m.content || '');
+        currentStepId = null;
       } else if (m.type === 'error') {
         showErrorDOM(m.content);
       } else {
-        addMessageDOM(m.role, m.content, false);
+        addMessageDOM(m.role, m.content || '', false);
       }
     }
     scrollToBottom();
@@ -97,15 +99,8 @@
     if (w) w.style.display = 'none';
   }
 
-  function showWelcome() {
-    var w = els.messages.querySelector('.ai-welcome');
-    if (w) w.style.display = '';
-  }
-
   function scrollToBottom() {
-    if (els.messages) {
-      els.messages.scrollTop = els.messages.scrollHeight;
-    }
+    if (els.messages) els.messages.scrollTop = els.messages.scrollHeight;
   }
 
   function addMessageDOM(role, content, isStreaming) {
@@ -116,72 +111,56 @@
     if (isStreaming) bubble.classList.add('streaming');
     div.appendChild(bubble);
     if (els.messages) els.messages.appendChild(div);
-    if (content) {
-      setBubbleContent(bubble, content);
-    }
+    if (content) setBubbleContent(bubble, content);
     scrollToBottom();
     return bubble;
   }
 
   function setBubbleContent(bubble, content) {
     if (typeof marked !== 'undefined') {
-      var html = marked.parse(content, { breaks: true, gfm: true });
-      bubble.innerHTML = html;
+      bubble.innerHTML = marked.parse(content, { breaks: true, gfm: true });
     } else {
       bubble.textContent = content;
     }
   }
 
-  /* ── Step container for tool-first rendering ── */
-  var _currentStepEl = null;
-  var _currentStepToolsEl = null;
-
-  function beginStep() {
-    _currentStepEl = document.createElement('div');
-    _currentStepEl.className = 'ai-step';
-    _currentStepToolsEl = document.createElement('div');
-    _currentStepToolsEl.className = 'ai-step-tools';
-    _currentStepEl.appendChild(_currentStepToolsEl);
-    if (els.messages) els.messages.appendChild(_currentStepEl);
+  /* ── Step containers keyed by stepId ── */
+  function beginStep(stepId) {
+    var root = document.createElement('div');
+    root.className = 'ai-step';
+    var tools = document.createElement('div');
+    tools.className = 'ai-step-tools';
+    root.appendChild(tools);
+    var msgDiv = document.createElement('div');
+    msgDiv.className = 'ai-message assistant';
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble streaming';
+    msgDiv.appendChild(bubble);
+    root.appendChild(msgDiv);
+    if (els.messages) els.messages.appendChild(root);
+    stepsById[stepId] = { rootEl: root, toolsEl: tools, bubbleEl: bubble };
     scrollToBottom();
   }
 
-  function addToolToStep(toolName, summary) {
-    if (!_currentStepToolsEl) beginStep();
+  function addToolToStep(stepId, toolName, summary) {
+    var step = stepsById[stepId];
+    if (!step) return;
     var div = document.createElement('div');
     div.className = 'ai-tool-event';
     div.innerHTML =
       '<span class="tool-icon">' + toolIcon(toolName) + '</span>' +
       '<span class="tool-label">' + escapeHtml(toolName) + '</span>' +
       '<span class="tool-summary">' + escapeHtml(summary) + '</span>';
-    _currentStepToolsEl.appendChild(div);
+    step.toolsEl.appendChild(div);
     scrollToBottom();
   }
 
-  function finishStepWithContent(content) {
-    if (_currentStepEl) {
-      var div = document.createElement('div');
-      div.className = 'ai-message assistant';
-      var bubble = document.createElement('div');
-      bubble.className = 'bubble';
-      div.appendChild(bubble);
-      _currentStepEl.appendChild(div);
-      if (content) setBubbleContent(bubble, content);
-      scrollToBottom();
-    }
-    _currentStepEl = null;
-    _currentStepToolsEl = null;
-  }
-
-  function abortStep(fallbackContent) {
-    if (_currentStepEl) {
-      _currentStepEl.remove();
-    }
-    if (fallbackContent) {
-      addMessageDOM('assistant', fallbackContent, false);
-    }
-    _currentStepEl = null;
-    _currentStepToolsEl = null;
+  function finishStepWithContent(stepId, content) {
+    var step = stepsById[stepId];
+    if (!step) return;
+    if (content) setBubbleContent(step.bubbleEl, content);
+    step.bubbleEl.classList.remove('streaming');
+    delete stepsById[stepId];
   }
 
   /* ── Tool icons ── */
@@ -193,19 +172,6 @@
     if (name.indexOf('analyze') !== -1) return '\uD83D\uDCCA';
     if (name.indexOf('remember') !== -1 || name.indexOf('memory') !== -1) return '\uD83E\uDDE0';
     return '\u2699';
-  }
-
-  function addToolEventDOM(toolName, summary) {
-    if (!_currentStepToolsEl) beginStep();
-    var div = document.createElement('div');
-    div.className = 'ai-tool-event';
-    div.innerHTML =
-      '<span class="tool-icon">' + toolIcon(toolName) + '</span>' +
-      '<span class="tool-label">' + escapeHtml(toolName) + '</span>' +
-      '<span class="tool-summary">' + escapeHtml(summary) + '</span>';
-    if (_currentStepToolsEl) _currentStepToolsEl.appendChild(div);
-    scrollToBottom();
-    return div;
   }
 
   function showErrorDOM(message) {
@@ -236,6 +202,7 @@
     for (var i = 0; i < state.messages.length; i++) {
       var m = state.messages[i];
       if (m.type === 'tool_event' || m.type === 'error' || m.type === 'step_start') continue;
+      if (m.role !== 'user' && m.role !== 'assistant') continue;
       lines.push('[' + m.role + ']');
       lines.push(m.content || '');
       lines.push('');
@@ -268,33 +235,36 @@
     el._hideTimer = setTimeout(function () { el.classList.remove('show'); }, 1800);
   }
 
-  /* ── Clipboard helpers ── */
+  /* ── Clipboard ── */
   function copyToClipboard(text, label) {
     if (!text) { showToast('Nothing to copy'); return; }
-    navigator.clipboard.writeText(text).then(function () {
-      showToast(label || '\u2713 Copied');
-    }).catch(function () {
-      fallbackCopy(text, label);
-    });
-  }
-
-  function fallbackCopy(text, label) {
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
+    var ok = false;
     try {
-      document.execCommand('copy');
-      showToast(label || '\u2713 Copied');
-    } catch (e) {
-      showToast('Copy failed');
+      navigator.clipboard.writeText(text).then(function () {
+        showToast(label || '\u2713 Copied');
+      }).catch(function () { ok = false; });
+    } catch (e) { ok = false; }
+    if (!ok) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '0';
+      ta.style.top = '0';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast(label || '\u2713 Copied');
+      } catch (e2) {
+        showToast('Copy failed');
+      }
+      document.body.removeChild(ta);
     }
-    document.body.removeChild(ta);
   }
 
-  /* ── Button handlers ── */
+  /* ── Button handlers (global for onclick= in HTML) ── */
   window.copyDialog = function () {
     copyToClipboard(formatDialog(), '\u2713 Dialog copied');
   };
@@ -330,7 +300,7 @@
       var w = container.querySelector('.ai-welcome');
       if (w) w.style.display = '';
     }
-    abortStep();
+    stepsById = {};
   };
 
   window.clearChatHistory = function () {
@@ -340,10 +310,10 @@
     window.clearChat();
   };
 
-  /* ── Tool event logging (replay-safe) ── */
-  function addToolEvent(toolName, summary) {
-    state.messages.push({ type: 'tool_event', role: 'tool', toolName: toolName, summary: summary });
-    addToolToStep(toolName, summary);
+  /* ── Tool event / error logging ── */
+  function addToolEvent(stepId, toolName, summary) {
+    state.messages.push({ type: 'tool_event', stepId: stepId, role: 'tool', toolName: toolName, summary: summary });
+    addToolToStep(stepId, toolName, summary);
     persistState();
   }
 
@@ -357,6 +327,7 @@
   async function sendMessage(text) {
     if (!text.trim() || state.isStreaming) return;
     state.isStreaming = true;
+    var stepId = ++state._stepCounter;
     hideWelcome();
 
     state.messages.push({ role: 'user', content: text });
@@ -366,7 +337,6 @@
 
     var fullResponse = '';
     var lastMessageDone = false;
-    var stepHadTools = false;
 
     try {
       var resp = await fetch('/api/agent/chat', {
@@ -408,9 +378,10 @@
       persistState();
     }
 
-    if (fullResponse.trim() && !lastMessageDone && !stepHadTools) {
-      state.messages.push({ role: 'assistant', content: fullResponse });
-      addMessageDOM('assistant', fullResponse);
+    if (fullResponse.trim() && !lastMessageDone) {
+      state.messages.push({ role: 'assistant', stepId: stepId, content: fullResponse });
+      beginStep(stepId);
+      finishStepWithContent(stepId, fullResponse);
       persistState();
     }
 
@@ -433,30 +404,27 @@
           }
           break;
 
+        case 'message_start':
+          state.messages.push({ type: 'step_start', stepId: stepId });
+          beginStep(stepId);
+          break;
+
         case 'tool_start':
-          stepHadTools = true;
-          addToolEvent(data.tool_name || 'tool', '\u2026');
+          addToolEvent(stepId, data.tool_name || 'tool', '\u2026');
           break;
 
         case 'tool_result':
           var summary = data.result_summary || 'done';
           if (data.duration_ms) summary += ' (' + data.duration_ms + 'ms)';
-          addToolEvent(data.tool_name || 'tool', summary);
-          break;
-
-        case 'message_start':
+          addToolEvent(stepId, data.tool_name || 'tool', summary);
           break;
 
         case 'message_done':
           if (data.content) {
             fullResponse = data.content;
             lastMessageDone = true;
-            if (stepHadTools) {
-              finishStepWithContent(data.content);
-            } else {
-              addMessageDOM('assistant', data.content, false);
-            }
-            state.messages.push({ role: 'assistant', content: data.content });
+            state.messages.push({ role: 'assistant', stepId: stepId, content: data.content });
+            finishStepWithContent(stepId, data.content);
             persistState();
             scrollToBottom();
           }
@@ -504,35 +472,17 @@
         persistState();
       });
     }
-    if (els.sendBtn) {
-      els.sendBtn.addEventListener('click', sendCurrentMessage);
-    }
+    if (els.sendBtn) els.sendBtn.addEventListener('click', sendCurrentMessage);
     if (els.voiceBtn) {
       els.voiceBtn.addEventListener('click', function () {
         showToast('\uD83C\uDFA4 Voice mode coming soon');
       });
     }
-    if (els.copyDialogBtn) {
-      els.copyDialogBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        window.copyDialog();
-      });
-    }
-    if (els.copyTraceBtn) {
-      els.copyTraceBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        window.copyTrace();
-      });
-    }
-    if (els.downloadTraceBtn) {
-      els.downloadTraceBtn.addEventListener('click', window.downloadTrace);
-    }
   }
 
   /* ── Quick chips ── */
   window.aiSendQuick = function (el) {
-    var text = el.textContent.replace(/^[^\s]+\s/, '').trim();
-    sendMessage(text);
+    sendMessage(el.textContent.replace(/^[^\s]+\s/, '').trim());
   };
 
   /* ── Panel toggle ── */
@@ -542,9 +492,7 @@
     state.isOpen = !els.panel.classList.contains('Hidden');
     persistState();
     var btn = document.getElementById('aiToggleBtn');
-    if (btn) {
-      btn.textContent = state.isOpen ? '\u25C0' : '\u25B6';
-    }
+    if (btn) btn.textContent = state.isOpen ? '\u25C0' : '\u25B6';
   };
 
   /* ── Boot ── */

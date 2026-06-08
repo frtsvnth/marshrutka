@@ -98,7 +98,7 @@ async def run_harness(
     user_message: str,
     memory_manager: MemoryManager,
     session_id: str,
-    max_steps: int = 5,
+    max_steps: int = 10,
 ) -> AsyncGenerator[SSEEvent, None]:
     projects = load_projects()
     system_prompt = memory_manager.build_system_prompt(projects)
