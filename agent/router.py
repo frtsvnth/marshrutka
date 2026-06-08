@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse, JSONResponse
 
 from agent.memory import MemoryManager
 from agent.harness import run_harness
@@ -11,15 +13,24 @@ from agent.models import (
     ChatRequest,
     MemoryUpdate,
     SSEEvent,
+    StateSaveRequest,
+    MemoryToolRequest,
+    register_memory_tools,
 )
 from agent.session import validate_session_id
+from agent.voice import transcribe_audio
 from registry import load_projects
+from config import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
 _memory_manager = MemoryManager()
+register_memory_tools(_memory_manager)
+
+AGENT_STATE_DIR = DATA_DIR / "agent" / "states"
+AGENT_STATE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _resolve_session(session_id: str) -> str:
@@ -64,6 +75,8 @@ async def get_context(session_id: str = ""):
         return {
             "session_id": None,
             "user_context": _memory_manager.profile.data,
+            "user_facts": _memory_manager.user_facts.data,
+            "project_memories": _memory_manager.project_memory.data,
             "history_count": 0,
             "project_count": len(projects),
             "projects": [
@@ -83,6 +96,8 @@ async def get_context(session_id: str = ""):
     return {
         "session_id": sid,
         "user_context": _memory_manager.profile.data,
+        "user_facts": _memory_manager.user_facts.data,
+        "project_memories": _memory_manager.project_memory.data,
         "history_count": len(session_memory.data.get("messages", [])),
         "project_count": len(projects),
         "projects": [
@@ -102,6 +117,19 @@ async def update_memory(body: MemoryUpdate):
     return {"ok": True}
 
 
+@router.post("/memory-tool")
+async def memory_tool(body: MemoryToolRequest):
+    if body.action == "remember_fact":
+        return _memory_manager.remember_fact(body.key, body.value)
+    elif body.action == "remember_project_note":
+        return _memory_manager.remember_project_note(body.project_id, body.key, body.value)
+    elif body.action == "list_memories":
+        return _memory_manager.list_memories(body.scope)
+    elif body.action == "search_memories":
+        return _memory_manager.search_memories(body.query)
+    raise HTTPException(status_code=422, detail="Unknown action")
+
+
 @router.delete("/history")
 async def clear_history(session_id: str = ""):
     if not session_id:
@@ -112,3 +140,45 @@ async def clear_history(session_id: str = ""):
     session_memory.clear()
     _memory_manager.drop_session(sid)
     return {"ok": True}
+
+
+@router.post("/state/save")
+async def save_state(body: StateSaveRequest):
+    sid = body.session_id or "anonymous"
+    safe_sid = "".join(c for c in sid if c.isalnum() or c in "-_")[:64]
+    state_file = AGENT_STATE_DIR / f"{safe_sid}.json"
+    try:
+        state_file.write_text(
+            json.dumps({
+                "session_id": sid,
+                "messages": body.messages,
+                "eventTrace": body.eventTrace,
+                "draft": body.draft,
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return {"ok": True}
+    except Exception as e:
+        logger.exception("Failed to save state")
+        return {"ok": False, "error": str(e)}
+
+
+@router.get("/state/load")
+async def load_state(session_id: str = ""):
+    sid = session_id or "anonymous"
+    safe_sid = "".join(c for c in sid if c.isalnum() or c in "-_")[:64]
+    state_file = AGENT_STATE_DIR / f"{safe_sid}.json"
+    if state_file.exists():
+        try:
+            data = json.loads(state_file.read_text(encoding="utf-8"))
+            return data
+        except Exception:
+            return {"session_id": sid, "messages": [], "eventTrace": [], "draft": ""}
+    return {"session_id": sid, "messages": [], "eventTrace": [], "draft": ""}
+
+
+@router.post("/transcribe")
+async def transcribe(file: UploadFile = File(...)):
+    audio_data = await file.read()
+    result = await transcribe_audio(audio_data, file.filename or "recording.webm")
+    return result

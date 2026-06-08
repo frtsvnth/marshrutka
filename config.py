@@ -21,3 +21,4 @@ ROUTERAI_BASE_URL = os.environ.get("ROUTERAI_BASE_URL", "https://routerai.ru/api
 ROUTERAI_API_KEY = os.environ.get("ROUTERAI_API_KEY", "")
 ROUTERAI_MODEL = os.environ.get("ROUTERAI_MODEL", "deepseek/deepseek-v4-flash")
 SERPAPI_API_KEY = os.environ.get("SERPAPI_API_KEY", "")
+STT_HTTP_URL = os.environ.get("STT_HTTP_URL", "http://141.136.44.9:9000/transcribe")

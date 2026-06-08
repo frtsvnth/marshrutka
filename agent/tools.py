@@ -2,6 +2,20 @@ from __future__ import annotations
 
 from agent.models import ToolDefinition
 from agent.web_tools import search_web, search_youtube
+from agent.research import fetch_url, research_topic
+from agent.file_tools import (
+    read_project_file,
+    search_project_code,
+    propose_file_patch,
+    apply_file_patch,
+    update_config,
+)
+from agent.operator_tools import (
+    analyze_projects,
+    suggest_schedules,
+    create_followup_task,
+    list_auto_tasks,
+)
 
 from registry import load_projects
 from storage import runs_store, schedules_store
@@ -135,6 +149,17 @@ TOOLS: dict[str, callable] = {
     "get_schedules": get_schedules,
     "search_web": search_web,
     "search_youtube": search_youtube,
+    "fetch_url": fetch_url,
+    "research_topic": research_topic,
+    "read_project_file": read_project_file,
+    "search_project_code": search_project_code,
+    "propose_file_patch": propose_file_patch,
+    "apply_file_patch": apply_file_patch,
+    "update_config": update_config,
+    "analyze_projects": analyze_projects,
+    "suggest_schedules": suggest_schedules,
+    "create_followup_task": create_followup_task,
+    "list_auto_tasks": list_auto_tasks,
 }
 
 TOOL_DEFINITIONS: list[ToolDefinition] = [
@@ -262,6 +287,247 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                     "type": "integer",
                     "description": "Количество результатов (1-10)",
                 },
+            },
+            "required": ["query"],
+        },
+    ),
+    ToolDefinition(
+        name="fetch_url",
+        description="Загрузить содержимое веб-страницы по URL. Используй для чтения статей и документации.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "URL страницы для загрузки",
+                }
+            },
+            "required": ["url"],
+        },
+    ),
+    ToolDefinition(
+        name="research_topic",
+        description="Провести глубокое исследование темы: делает поиск, загружает несколько страниц и возвращает контент. Используй когда нужно изучить тему подробно.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Тема для исследования",
+                },
+                "num_queries": {
+                    "type": "integer",
+                    "description": "Количество результатов поиска (1-5)",
+                },
+            },
+            "required": ["query"],
+        },
+    ),
+    ToolDefinition(
+        name="read_project_file",
+        description="Прочитать файл или директорию в проекте. Путь относительно корня проекта.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Путь к файлу относительно корня проекта",
+                }
+            },
+            "required": ["path"],
+        },
+    ),
+    ToolDefinition(
+        name="search_project_code",
+        description="Найти вхождение текста в файлах проекта. Поддерживает .py, .html, .js, .css, .json, .md.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Текст для поиска",
+                },
+                "include": {
+                    "type": "string",
+                    "description": "Маска файлов через запятую (по умолчанию *.py,*.html,*.js,*.css,*.json,*.md)",
+                },
+            },
+            "required": ["query"],
+        },
+    ),
+    ToolDefinition(
+        name="propose_file_patch",
+        description="Подготовить файл к редактированию: возвращает текущее содержимое и инструкцию. Используй перед apply_file_patch. НЕ применяет изменения, только показывает.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Путь к файлу относительно корня проекта",
+                },
+                "instruction": {
+                    "type": "string",
+                    "description": "Описание желаемого изменения",
+                },
+            },
+            "required": ["path", "instruction"],
+        },
+    ),
+    ToolDefinition(
+        name="apply_file_patch",
+        description="Применить изменения к файлу. ВАЖНО: используй только после propose_file_patch и получения подтверждения от пользователя.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Путь к файлу относительно корня проекта",
+                },
+                "patch": {
+                    "type": "string",
+                    "description": "Новое полное содержимое файла",
+                },
+            },
+            "required": ["path", "patch"],
+        },
+    ),
+    ToolDefinition(
+        name="update_config",
+        description="Обновить значение в .env конфиге проекта.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Имя переменной (например, ROUTERAI_MODEL)",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "Новое значение",
+                },
+            },
+            "required": ["key", "value"],
+        },
+    ),
+    ToolDefinition(
+        name="analyze_projects",
+        description="Проанализировать состояние всех проектов: проверить запуски, расписания, найти проблемы и дать рекомендации.",
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+    ),
+    ToolDefinition(
+        name="suggest_schedules",
+        description="Предложить cron-расписания для проектов, у которых их нет.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "ID проекта (опционально, для фильтрации)",
+                }
+            },
+        },
+    ),
+    ToolDefinition(
+        name="create_followup_task",
+        description="Создать followup-задачу для отслеживания. Используй когда договорились о действии на будущее.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Название задачи",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Описание задачи",
+                },
+                "task_type": {
+                    "type": "string",
+                    "description": "Тип задачи (manual, health_check, research_watch)",
+                },
+            },
+            "required": ["title"],
+        },
+    ),
+    ToolDefinition(
+        name="list_auto_tasks",
+        description="Получить список созданных авто-задач.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "description": "Фильтр по статусу (pending, completed, cancelled)",
+                }
+            },
+        },
+    ),
+    ToolDefinition(
+        name="remember_fact",
+        description="Запомнить факт о пользователе. Используй когда пользователь говорит «запомни» или просит сохранить информацию о себе.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Ключ факта (например, preferred_style, name, working_hours)",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "Значение факта",
+                },
+            },
+            "required": ["key", "value"],
+        },
+    ),
+    ToolDefinition(
+        name="remember_project_note",
+        description="Запомнить заметку о проекте. Используй когда пользователь говорит о проекте важную информацию.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "ID проекта",
+                },
+                "key": {
+                    "type": "string",
+                    "description": "Ключ заметки",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "Содержание заметки",
+                },
+            },
+            "required": ["project_id", "key", "value"],
+        },
+    ),
+    ToolDefinition(
+        name="list_memories",
+        description="Показать сохранённые воспоминания. Можно отфильтровать по области.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "scope": {
+                    "type": "string",
+                    "description": "Область: user (факты), projects (заметки о проектах), decisions (журнал решений), all (всё)",
+                }
+            },
+        },
+    ),
+    ToolDefinition(
+        name="search_memories",
+        description="Поиск по долговременной памяти. Ищет среди фактов о пользователе и заметок о проектах.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Текст для поиска",
+                }
             },
             "required": ["query"],
         },

@@ -102,106 +102,53 @@ body {
 .page-header h1 { font-size: 1.4rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
 .page-header .description { color: var(--text-muted); font-size: .85rem; margin-top: .2rem; }
 
-/* ── Right AI panel ── */
-.ai-panel {
-  width: 350px; min-width: 250px; max-width: 500px; flex-shrink: 0;
-  background: var(--navy); border-radius: 20px; margin-left: 1rem;
-  color: #fff; display: flex; flex-direction: column;
-  height: calc(100vh - 2rem); position: relative; overflow: hidden;
-}
-.ai-panel.Hidden { width: 0; min-width: 0; max-width: 0; margin-left: 0; padding: 0; border: none; overflow: hidden; }
+  /* ── Right AI panel ── */
+  .ai-panel {
+    width: 350px; min-width: 250px; max-width: 500px; flex-shrink: 0;
+    background: var(--navy); border-radius: 20px; margin-left: 1rem;
+    color: #fff; display: flex; flex-direction: column;
+    height: calc(100vh - 2rem); position: relative; overflow: hidden;
+  }
+  .ai-panel.Hidden { width: 0; min-width: 0; max-width: 0; margin-left: 0; padding: 0; border: none; overflow: hidden; }
 
-/* ── AI panel toggle button (visible when panel is hidden) ── */
-.ai-toggle-btn {
-  display: none; position: fixed; right: 1rem; top: 1.5rem;
-  width: 32px; height: 32px; border-radius: 8px; border: none;
-  background: var(--navy); color: rgba(255,255,255,.5); cursor: pointer; z-index: 100;
-  font-size: .85rem; transition: background .12s, color .12s;
-}
-.ai-toggle-btn:hover { background: var(--navy-light); color: #fff; }
-.ai-panel.Hidden ~ .ai-toggle-btn { display: flex; align-items: center; justify-content: center; }
-.ai-resize-handle {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
-  cursor: col-resize; z-index: 10;
-  background: transparent; transition: background .15s;
-}
-.ai-resize-handle:hover, .ai-resize-handle.active { background: rgba(255,255,255,.15); }
-.ai-panel-header {
-  padding: 1.25rem 1.25rem 0; flex-shrink: 0;
-}
-.ai-panel-header .top-row { display: flex; justify-content: space-between; align-items: center; }
-.ai-panel-header .title { font-size: .95rem; font-weight: 700; letter-spacing: -0.01em; }
-.ai-panel-controls { display: flex; gap: .2rem; }
-.ai-panel-controls button {
-  background: rgba(255,255,255,.08); border: none; color: rgba(255,255,255,.5); cursor: pointer;
-  width: 1.6rem; height: 1.6rem; border-radius: 8px; font-size: .75rem;
-  display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s;
-}
-.ai-panel-controls button:hover { background: rgba(255,255,255,.15); color: #fff; }
-.ai-panel-sub { font-size: .75rem; color: rgba(255,255,255,.5); margin-top: .1rem; text-transform: uppercase; letter-spacing: .04em; }
-.ai-panel-body {
-  padding: 1.25rem; flex: 1; overflow-y: auto; display: flex; flex-direction: column;
-}
-.ai-panel-body::-webkit-scrollbar { width: 3px; }
-.ai-panel-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 3px; }
-.ai-badge {
-  display: inline-flex; align-items: center; gap: .35rem;
-  background: rgba(255,255,255,.1); border-radius: 100px; padding: .25rem .65rem;
-  font-size: .72rem; font-weight: 600; color: var(--amber); margin-bottom: 1rem; align-self: flex-start;
-}
-.ai-panel p { font-size: .82rem; line-height: 1.6; color: rgba(255,255,255,.6); margin-bottom: 1rem; }
-.ai-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: auto; }
-.ai-chip {
-  background: rgba(255,255,255,.07); border-radius: 100px; padding: .25rem .6rem;
-  font-size: .7rem; color: rgba(255,255,255,.5); white-space: nowrap;
-}
-.ai-chip.active { background: rgba(251,191,36,.12); color: var(--amber); }
-.ai-dots { display: flex; gap: .35rem; margin-bottom: 1rem; }
-.ai-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.15); }
-.ai-dot:nth-child(1) { background: var(--indigo); }
-.ai-dot:nth-child(2) { background: var(--amber); }
-.ai-dot:nth-child(3) { background: rgba(255,255,255,.15); }
-
-/* AI panel footer — disabled composer */
-.ai-panel-footer {
-  padding: 1rem 1.25rem 1.25rem; flex-shrink: 0; border-top: 1px solid rgba(255,255,255,.08);
-}
-.ai-composer {
-  display: flex; gap: .5rem; align-items: flex-end;
-}
-.ai-composer textarea {
-  flex: 1; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
-  border-radius: 12px; padding: .55rem .75rem; font-size: .82rem; font-family: inherit;
-  color: rgba(255,255,255,.4); resize: none; min-height: 38px; max-height: 80px;
-  outline: none;
-}
-.ai-composer textarea::placeholder { color: rgba(255,255,255,.25); }
-.ai-composer button {
-  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); border-radius: 12px;
-  width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
-  color: rgba(255,255,255,.2); cursor: not-allowed; font-size: .85rem; flex-shrink: 0;
-}
-.ai-composer[data-disabled] textarea { cursor: not-allowed; }
-
-/* AI Chat Messages */
-.ai-message { margin-bottom: .75rem; animation: fadeInMsg .2s ease; }
-@keyframes fadeInMsg { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-.ai-message.user { display: flex; justify-content: flex-end; }
-.ai-message.assistant { display: flex; justify-content: flex-start; }
-.ai-message .bubble {
-  max-width: 88%; padding: .55rem .8rem; border-radius: 14px;
-  font-size: .82rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
-}
-.ai-message.user .bubble { background: var(--indigo); color: #fff; border-radius: 14px 14px 4px 14px; }
-.ai-message.assistant .bubble { background: rgba(255,255,255,.08); color: rgba(255,255,255,.88); border-radius: 14px 14px 14px 4px; }
-.ai-message .bubble.streaming::after { content: "▋"; animation: blink .7s infinite; margin-left: 1px; }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-.ai-tool-indicator { font-size: .72rem; color: var(--amber); margin: .2rem 0; padding: 0 .2rem; opacity: .85; }
-.ai-welcome { padding: .25rem 0; }
-.ai-composer button { cursor: pointer !important; color: rgba(255,255,255,.7) !important; }
-.ai-composer button:hover { background: rgba(255,255,255,.15) !important; color: #fff !important; }
-.ai-composer textarea:not([disabled]) { color: rgba(255,255,255,.88) !important; cursor: text !important; }
-.ai-composer textarea:not([disabled]):focus { border-color: rgba(255,255,255,.3) !important; outline: none; }
+  .ai-toggle-btn {
+    display: none; position: fixed; right: 1rem; top: 1.5rem;
+    width: 32px; height: 32px; border-radius: 8px; border: none;
+    background: var(--navy); color: rgba(255,255,255,.5); cursor: pointer; z-index: 100;
+    font-size: .85rem; transition: background .12s, color .12s;
+  }
+  .ai-toggle-btn:hover { background: var(--navy-light); color: #fff; }
+  .ai-panel.Hidden ~ .ai-toggle-btn { display: flex; align-items: center; justify-content: center; }
+  .ai-resize-handle {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+    cursor: col-resize; z-index: 10;
+    background: transparent; transition: background .15s;
+  }
+  .ai-resize-handle:hover, .ai-resize-handle.active { background: rgba(255,255,255,.15); }
+  .ai-panel-header {
+    padding: 1.25rem 1.25rem 0; flex-shrink: 0;
+  }
+  .ai-panel-header .top-row { display: flex; justify-content: space-between; align-items: center; }
+  .ai-panel-header .title { font-size: .95rem; font-weight: 700; letter-spacing: -0.01em; }
+  .ai-panel-controls { display: flex; gap: .2rem; align-items: center; }
+  .ai-panel-controls button {
+    background: rgba(255,255,255,.08); border: none; color: rgba(255,255,255,.5); cursor: pointer;
+    width: 1.6rem; height: 1.6rem; border-radius: 8px; font-size: .75rem;
+    display: flex; align-items: center; justify-content: center; transition: background .12s, color .12s;
+  }
+  .ai-panel-controls button:hover { background: rgba(255,255,255,.15); color: #fff; }
+  .ai-panel-controls .badge-amber {
+    display: inline-flex; align-items: center; gap: .25rem;
+    background: rgba(251,191,36,.12); border-radius: 100px; padding: .15rem .5rem;
+    font-size: .65rem; font-weight: 600; color: var(--amber); white-space: nowrap;
+  }
+  .ai-panel-sub { font-size: .7rem; color: rgba(255,255,255,.45); margin-top: .1rem; text-transform: uppercase; letter-spacing: .04em; }
+  .ai-badge { display: inline-flex; align-items: center; gap: .35rem; background: rgba(255,255,255,.1); border-radius: 100px; padding: .25rem .65rem; font-size: .72rem; font-weight: 600; color: var(--amber); margin-bottom: 1rem; align-self: flex-start; }
+  .ai-dots { display: flex; gap: .35rem; margin-bottom: 1rem; }
+  .ai-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.15); }
+  .ai-dot:nth-child(1) { background: var(--indigo); }
+  .ai-dot:nth-child(2) { background: var(--amber); }
+  .ai-dot:nth-child(3) { background: rgba(255,255,255,.15); }
 
 /* ── Cards ── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.35rem 1.5rem; margin-bottom: 1rem; }
@@ -438,12 +385,14 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
     <div class="ai-resize-handle" id="aiResizeHandle"></div>
     <div class="ai-panel-header">
       <div class="top-row">
-        <div class="title">AI-редактор</div>
+        <div class="title">Маршал</div>
         <div class="ai-panel-controls">
+          <span class="badge-amber">⚡ active</span>
+          <button onclick="clearChatHistory()" title="Очистить чат">🗑</button>
           <button onclick="toggleAiPanel()" title="Скрыть">✕</button>
         </div>
       </div>
-      <div class="ai-panel-sub">Помощник для контентных маршрутов</div>
+      <div class="ai-panel-sub">AI-оператор Marshrutka</div>
     </div>
     <div class="ai-panel-body" id="aiChatMessages">
       <div class="ai-welcome">
@@ -451,23 +400,28 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
           <span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>
         </div>
         <div class="ai-badge">⚡ Маршал активен</div>
-        <p>Привет! Я Маршал, твой AI-ассистент в Маршрутке.<br>
-        Спроси меня что угодно: напиши текст, проверь проект, запусти пайплайн.</p>
+        <p>Привет! Я Маршал, твой AI-оператор в Маршрутке.<br>
+        Пиши текст, проверь проекты, запусти пайплайн или исследуй тему.</p>
         <div class="ai-chips" id="aiQuickChips">
           <span class="ai-chip" onclick="aiSendQuick(this)">📋 Список проектов</span>
           <span class="ai-chip" onclick="aiSendQuick(this)">✍️ Текст на 160 слов</span>
           <span class="ai-chip" onclick="aiSendQuick(this)">📊 Последние запуски</span>
+          <span class="ai-chip" onclick="aiSendQuick(this)">🔍 Проверь проекты</span>
         </div>
       </div>
     </div>
     <div class="ai-panel-footer">
       <div class="ai-actions">
-        <button class="ai-action-btn" id="copyDialogBtn" onclick="copyDialog()">📋 Копировать диалог</button>
-        <button class="ai-action-btn" id="copyTraceBtn" onclick="copyTrace()">🔍 Debug trace</button>
+        <button class="ai-action-btn" id="copyDialogBtn">📋 Диалог</button>
+        <button class="ai-action-btn" id="copyTraceBtn">🔍 Trace</button>
+        <button class="ai-action-btn" id="downloadTraceBtn">⬇ Trace.json</button>
       </div>
       <div class="ai-composer">
         <textarea rows="1" placeholder="Спроси Маршала…"></textarea>
-        <button>➤</button>
+        <div class="composer-row">
+          <button class="voice-btn" title="Голосовой ввод">🎤</button>
+          <button class="send-btn" title="Отправить">➤</button>
+        </div>
       </div>
     </div>
   </aside>
@@ -476,22 +430,14 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
 
 <script>
 (function() {
-  // ── AI panel: persist width + visibility ──
   var panel = document.getElementById('aiPanel');
   var savedWidth = localStorage.getItem('marshrutka_ai_width');
-  if (savedWidth) {
+  if (savedWidth && panel) {
     panel.style.width = savedWidth + 'px';
   }
-  if (localStorage.getItem('marshrutka_ai_panel') === 'hidden') {
-    panel.classList.add('Hidden');
-  }
-  window.toggleAiPanel = function() {
-    panel.classList.toggle('Hidden');
-    localStorage.setItem('marshrutka_ai_panel', panel.classList.contains('Hidden') ? 'hidden' : 'visible');
-  };
 
   var handle = document.getElementById('aiResizeHandle');
-  if (handle) {
+  if (handle && panel) {
     var startX, startW;
     handle.addEventListener('mousedown', function(e) {
       e.preventDefault();
@@ -503,8 +449,8 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
     });
     function onMouseMove(e) {
       var newW = startW - (e.clientX - startX);
-      var min = parseInt(panel.style.minWidth) || 250;
-      var max = parseInt(panel.style.maxWidth) || 500;
+      var min = 250;
+      var max = 500;
       panel.style.width = Math.min(max, Math.max(min, newW)) + 'px';
     }
     function onMouseUp() {
@@ -515,7 +461,6 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
     }
   }
 
-  // ── Client-side navigation (AI panel stays alive across pages) ──
   var contentArea = document.querySelector('.content-area');
 
   document.addEventListener('click', function(e) {
@@ -547,7 +492,7 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
         tmp.innerHTML = html;
         var newContent = tmp.querySelector('.content-area');
         var newTitle = tmp.querySelector('title');
-        if (newContent) {
+        if (newContent && contentArea) {
           contentArea.innerHTML = newContent.innerHTML;
         }
         if (newTitle) {
@@ -658,6 +603,7 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
 })();
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <script src="/static/agent-chat.js"></script>
 
 </body>

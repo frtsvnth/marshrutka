@@ -44,6 +44,22 @@ class MemoryUpdate(BaseModel):
     value: object
 
 
+class StateSaveRequest(BaseModel):
+    session_id: str = ""
+    messages: list[dict] = []
+    eventTrace: list[dict] = []
+    draft: str = ""
+
+
+class MemoryToolRequest(BaseModel):
+    action: str
+    key: str = ""
+    value: str = ""
+    project_id: str = ""
+    query: str = ""
+    scope: str = "user"
+
+
 def build_openai_tools() -> list[dict]:
     from agent.tools import TOOL_DEFINITIONS
     return [
@@ -59,7 +75,28 @@ def build_openai_tools() -> list[dict]:
     ]
 
 
-async def execute_tool(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+MEMORY_TOOLS = {}
+
+
+def register_memory_tools(memory_manager):
+    MEMORY_TOOLS.clear()
+    MEMORY_TOOLS["remember_fact"] = memory_manager.remember_fact
+    MEMORY_TOOLS["remember_project_note"] = memory_manager.remember_project_note
+    MEMORY_TOOLS["list_memories"] = memory_manager.list_memories
+    MEMORY_TOOLS["search_memories"] = memory_manager.search_memories
+
+
+async def execute_tool(tool_name: str, args: dict[str, Any], memory_manager=None) -> dict[str, Any]:
+    if tool_name in MEMORY_TOOLS:
+        try:
+            result = MEMORY_TOOLS[tool_name](**args)
+            if hasattr(result, "__await__"):
+                result = await result
+            return result if isinstance(result, dict) else {"result": result}
+        except Exception as e:
+            logger.exception("Memory tool failed: %s(%s)", tool_name, args)
+            return {"error": "Ошибка инструмента памяти"}
+
     from agent.tools import TOOLS
     fn = TOOLS.get(tool_name)
     if fn is None:

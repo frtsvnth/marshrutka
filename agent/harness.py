@@ -141,7 +141,7 @@ async def run_harness(
             })
 
             t0 = time.monotonic()
-            result = await execute_tool(tool_name, args)
+            result = await execute_tool(tool_name, args, memory_manager)
             duration_ms = int((time.monotonic() - t0) * 1000)
             result_str = json.dumps(result, ensure_ascii=False)
 
@@ -182,4 +182,28 @@ def _summarize_result(result: dict) -> str:
         count = len(result["results"])
         q = result.get("query", "")
         return f"найдено {count} результатов по запросу «{q}»"
+    if "content" in result and "url" in result:
+        return f"загружено {result.get('content_length', 0)} символов с {result.get('url', '')}"
+    if "page_contents" in result:
+        return f"исследовано {len(result['page_contents'])} страниц по теме «{result.get('query', '')}»"
+    if "issues" in result or "recommendations" in result:
+        issues = len(result.get("issues", []))
+        recs = len(result.get("recommendations", []))
+        return f"{issues} проблем, {recs} рекомендаций"
+    if "suggestions" in result:
+        return f"{len(result['suggestions'])} предложений"
+    if "task_id" in result:
+        return f"задача {result['task_id']} создана"
+    if "tasks" in result:
+        return f"{result['task_count']} задач"
+    if "file_count" in result:
+        return f"найдено в {result['file_count']} файлах"
+    if "status" in result and result.get("status") == "remembered":
+        return f"запомнено: {result.get('key', '')}"
+    if "status" in result and result.get("status") == "applied":
+        return f"патч применён к {result.get('path', '')}"
+    if "status" in result and result.get("status") == "updated":
+        return f"конфиг {result.get('key', '')} обновлён"
+    if "entries" in result:
+        return f"список файлов/директорий"
     return "выполнено"
