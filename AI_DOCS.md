@@ -1,6 +1,6 @@
 # AI-агент Маршал — документация
 
-> Версия: 2.0 | Последнее обновление: 2026-06-08
+> Версия: 2.1 | Последнее обновление: 2026-06-08
 
 ---
 
@@ -18,7 +18,7 @@
 - **долговременная память**: факты о пользователе, заметки о проектах, журнал решений
 - **режим оператора**: анализ проектов, рекомендации, авто-задачи
 - **редактирование файлов**: чтение, поиск, предложение и применение патчей
-- **голосовой ввод**: push-to-talk через браузерный API
+- **голосовой ввод**: через faster-whisper (push-to-talk, в разработке)
 
 ---
 
@@ -28,12 +28,12 @@
 
 ```
 Браузер (vanilla JS)                     FastAPI backend
-┌──────────────────────┐    SSE stream    ┌──────────────────────┐
-│  agent-chat.js        │ ◄────────────── │  agent/router.py     │
-│  (marked.js рендер)   │   event: token  │                      │
-│  (localStorage кэш)   │   event: tool_* │  agent/harness.py    │
-│  (Web Speech API)     │   event: done   │  (tool loop)         │
-└──────────────────────┘                 └──────┬───────────────┘
+┌──────────────────────────┐  SSE stream  ┌──────────────────────┐
+│  agent-chat.js            │ ◄────────── │  agent/router.py     │
+│  (marked.js рендер)       │  event: *   │                      │
+│  (localStorage persistence)│             │  agent/harness.py    │
+│  (step container ordering) │             │  (tool loop)         │
+└──────────────────────────┘             └──────┬───────────────┘
                                                 │
                                       ┌─────────▼──────────────┐
                                       │  OpenAI-compatible API  │
@@ -47,31 +47,31 @@
 agent/
 ├── __init__.py       # Re-exports
 ├── harness.py        # Tool-calling loop, LLM calls, SSE event generation
-├── memory.py         # MemoryManager, все типы памяти, system prompt
-├── models.py         # Pydantic: SSEEvent, ToolDefinition, ChatRequest, memory tools
-├── router.py         # FastAPI routes: /chat, /context, /memory, /state, /transcribe
-├── session.py        # session_id validation
-├── tools.py          # Tool implementations + TOOLS dict + TOOL_DEFINITIONS
+├── memory.py         # MemoryManager, все типы памяти, system prompt builder
+├── models.py         # Pydantic: SSEEvent, ToolDefinition, ChatRequest, MemoryToolRequest, StateSaveRequest
+├── router.py         # FastAPI routes: /chat, /context, /memory, /state, /transcribe, /memory-tool
+├── session.py        # session_id validation (regex allowlist)
+├── tools.py          # Tool implementations + TOOLS dict + TOOL_DEFINITIONS (23 tools)
 ├── web_tools.py      # search_web, search_youtube via SerpApi
 ├── research.py       # fetch_url, research_topic — чтение и анализ веб-страниц
-├── file_tools.py     # read/write project files, search, propose/apply patches
-├── operator_tools.py # analyze_projects, suggest_schedules, create_followup_task
-└── voice.py          # Audio transcription via RouterAI Whisper
+├── file_tools.py     # read/write project files, search code, propose/apply patches
+├── operator_tools.py # analyze_projects, suggest_schedules, create_followup_task, list_auto_tasks
+└── voice.py          # Audio transcription via STT_HTTP_URL (faster-whisper)
 
 static/
-├── agent-chat.js     # Chat client: SSE, markdown, voice, persistence, modals
-└── agent-chat.css    # Полные стили чата (markdown, tool events, voice, modals)
+├── agent-chat.js     # Chat client: SSE, markdown (marked.js), step containers, localStorage persistence, clipboard
+└── agent-chat.css    # Full chat styles: textarea, markdown, tool events, step containers, voice, transcript modal
 
 data/agent/
-├── user_profile.json      # Глобальный профиль
+├── user_profile.json      # Глобальный профиль (имя, preferences, notes)
 ├── user_facts.json        # Факты о пользователе (долгая память)
 ├── project_notes.json     # Заметки о проектах
 ├── project_memory.json    # Знания о проектах (долгая память)
-├── decisions_log.jsonl    # Журнал решений
+├── decisions_log.jsonl    # Журнал решений агента
 ├── research_cache.json    # Кэш результатов исследований
 ├── agent_jobs.json        # Авто-задачи
-├── sessions/              # Per-session chat history
-└── states/                # Saved frontend state for reload resilience
+├── sessions/              # Per-session chat history (*.json)
+└── states/                # Saved frontend state для восстановления при reload
 ```
 
 ---
@@ -91,6 +91,11 @@ data/agent/
   "session_id": "abc123def456"
 }
 ```
+
+- `message` — строка, обязательное. Максимум 8000 символов.
+- `session_id` — опционально. Если не указан, сервер генерирует новый.
+
+**Response:** `text/event-stream`
 
 SSE протокол описан в разделе 4.
 
@@ -120,11 +125,17 @@ SSE протокол описан в разделе 4.
 
 ### 3.7. POST /api/agent/transcribe
 
-Загрузить аудиофайл для распознавания речи. Возвращает `{"text": "..."}`.
+Загрузить аудиофайл для распознавания речи. Использует STT_HTTP_URL (faster-whisper).
+
+**Request:** `multipart/form-data` с полем `file`
+**Response:**
+```json
+{"text": "распознанный текст", "language": "ru", "duration": 1.0}
+```
 
 ### 3.8. DELETE /api/agent/history
 
-Очистить историю сессии.
+Очистить историю сессии + сбросить in-memory cache.
 
 ---
 
@@ -137,48 +148,63 @@ SSE протокол описан в разделе 4.
 event: session
 data: {"type": "session", "session_id": "abc123def456"}
 ```
+Первое событие в стриме. Содержит ID сессии.
 
 ### 4.2. Событие `message_start`
 ```
 event: message_start
 data: {"type": "message_start"}
 ```
+Сигнализирует начало формирования ответа.
 
-### 4.3. Событие `token` (зарезервировано для streaming)
+### 4.3. Событие `token`
 ```
 event: token
 data: {"type": "token", "content": "Привет"}
 ```
+Отдельный токен стриминга (зарезервировано для будущего token-by-token streaming).
 
 ### 4.4. Событие `tool_start`
 ```
 event: tool_start
 data: {"type": "tool_start", "tool_name": "count_words", "arguments": {"text": "..."}}
 ```
+Агент вызывает инструмент. Появляется перед выполнением.
 
 ### 4.5. Событие `tool_result`
 ```
 event: tool_result
 data: {"type": "tool_result", "tool_name": "count_words", "result_summary": "5 слов, 25 символов", "duration_ms": 123}
 ```
+Результат выполнения инструмента.
 
 ### 4.6. Событие `message_done`
 ```
 event: message_done
 data: {"type": "message_done", "content": "Вот ваш текст..."}
 ```
+Финальный полный ответ ассистента.
 
 ### 4.7. Событие `error`
 ```
 event: error
 data: {"type": "error", "message": "Внутренняя ошибка. Попробуйте ещё раз."}
 ```
+Ошибка. Без traceback, только безопасное сообщение.
 
 ### 4.8. Событие `done`
 ```
 event: done
 data: {"type": "done"}
 ```
+Завершение стрима. Всегда последнее.
+
+### Порядок событий в UI
+
+Фронтенд рендерит события в правильном порядке:
+1. `message_start` — UI готовится к приёму
+2. `tool_start` / `tool_result` — цепочка tool-вызовов (рендерится в `.ai-step-tools`)
+3. `message_done` — финальный ответ рендерится ПОСЛЕ tool-блока в том же `.ai-step`
 
 ---
 
@@ -237,8 +263,8 @@ data: {"type": "done"}
 |---|---|---|
 | ProfileMemory | user_profile.json | Имя, предпочтения |
 | UserFactsMemory | user_facts.json | Факты о пользователе (долгая) |
-| ProjectNotesMemory | project_notes.json | Заметки о проектах |
-| ProjectMemoryStore | project_memory.json | Знания о проектах (долгая) |
+| ProjectNotesMemory | project_notes.json | Заметки о проектах (глобальные) |
+| ProjectMemoryStore | project_memory.json | Знания о проектах (долгая, структурированная) |
 | DecisionsLog | decisions_log.jsonl | Журнал решений агента |
 | ResearchCache | research_cache.json | Кэш результатов исследований |
 | SessionMemory | sessions/\<id\>.json | Per-session история диалога |
@@ -249,35 +275,46 @@ data: {"type": "done"}
 
 **Методы:**
 - `get_session()` — получить/создать сессию
-- `build_system_prompt()` — собрать system prompt из всех источников
+- `build_system_prompt()` — собрать system prompt из profile + facts + project notes + project memory
 - `remember_fact(key, value)` — запомнить факт
 - `remember_project_note(project_id, key, value)` — запомнить о проекте
-- `list_memories(scope)` — показать воспоминания
-- `search_memories(query)` — поиск по памяти
+- `list_memories(scope)` — показать воспоминания (user/projects/decisions/all)
+- `search_memories(query)` — поиск по памяти (keyword match)
 
 ---
 
 ## 7. UI: устойчивость к reload
 
-Правая панель Маршала переживает обновление страницы благодаря:
+Правая панель Маршала переживает обновление страницы благодаря трём механизмам:
 
-1. **localStorage persistence**: sessionId, messages[], eventTrace[], draft, panel open/closed
-2. **Серверный state backup**: `/api/agent/state/save` и `/api/agent/state/load`
-3. **Client-side navigation**: SPA-like переходы между страницами не задевают AI панель
-4. **Markdown rendering**: через marked.js с безопасным HTML, подсветкой кода
+1. **localStorage persistence:** при каждом изменении `state.messages`, `state.eventTrace`, `state.sessionId`, draft — пишется snapshot в `marshrutka_agent_state`. При загрузке страницы восстанавливается.
+2. **Серверный state backup:** `sendBeacon` на `/api/agent/state/save` при `beforeunload`. При старте опционально загружается с сервера через `/api/agent/state/load`.
+3. **Client-side navigation:** SPA-like переходы между страницами не перезагружают AI панель.
+
+### Восстанавливается:
+- история сообщений (messages[])
+- eventTrace[]
+- sessionId
+- draft текста в input (если был)
+- open/closed состояние панели
 
 ---
 
 ## 8. Voice mode
 
-Push-to-talk через Web Speech API (браузерный MediaRecorder).
+### Текущее состояние: stub
 
-Flow:
-1. Нажать кнопку 🎤 — начать запись
+Кнопка 🎤 в панели показывает toast "Voice mode coming soon". Полноценная реализация требует настройки STT_HTTP_URL в `.env`.
+
+### Бэкенд
+
+`POST /api/agent/transcribe` — принимает `multipart/form-data` с полем `file`, отправляет на `STT_HTTP_URL` (faster-whisper), возвращает `{"text": "...", "language": "ru", "duration": 1.0}`.
+
+### Планируемый flow
+1. Нажать 🎤 — начать запись (MediaRecorder API)
 2. Повторное нажатие — остановить
 3. Аудио отправляется на `/api/agent/transcribe`
-4. Backend использует RouterAI Whisper для распознавания
-5. Распознанный текст отправляется в чат
+4. Распознанный текст отправляется в чат
 
 ---
 
@@ -289,11 +326,29 @@ Controlled flow для редактирования файлов:
 2. Пользователь видит предложение в чате
 3. После подтверждения агент вызывает `apply_file_patch(path, patch)` — применяет изменения
 
-Никаких молчаливых изменений.
+**Правило:** агент НЕ может применять патчи без явного шага подтверждения. Это контролируется на уровне system prompt и инструментов.
 
 ---
 
-## 10. Добавление нового инструмента
+## 10. Markdown rendering
+
+Ответы ассистента рендерятся через Marked.js (CDN).
+
+**Поддерживается:**
+- `**жирный**`, `*курсив*`
+- заголовки h1-h4
+- маркированные и нумерованные списки
+- `inline code` и code blocks с pre
+- ссылки
+- blockquote
+- таблицы (GFM)
+- горизонтальные разделители
+
+**Fallback:** если marked.js не загружен (offline), рендеринг как plain text через textContent.
+
+---
+
+## 11. Добавление нового инструмента
 
 1. Написать функцию в соответствующем файле (`tools.py`, `file_tools.py`, `research.py`, `operator_tools.py`)
 2. Добавить в словарь `TOOLS` в `tools.py`
@@ -304,11 +359,32 @@ Controlled flow для редактирования файлов:
 
 ---
 
-## 11. Известные ограничения
+## 12. Конфигурация
+
+Переменные окружения (`.env`):
+
+```bash
+# LLM (обязательно)
+ROUTERAI_BASE_URL=https://routerai.ru/api/v1
+ROUTERAI_API_KEY=sk-your-key
+ROUTERAI_MODEL=deepseek/deepseek-v4-flash
+
+# Web search (опционально — без ключа поиск возвращает "не настроен")
+SERPAPI_API_KEY=your_serpapi_key
+
+# STT (опционально — без ключа голосовой ввод не работает)
+STT_HTTP_URL=http://141.136.44.9:9000/transcribe
+```
+
+---
+
+## 13. Известные ограничения
 
 - **Tool calls** — нестриминговые. При большом количестве шагов пользователь ждёт.
+- **Финальный ответ** — отдаётся целиком (message_done), без token-by-token стриминга.
 - **Markdown rendering** — использует marked.js (CDN). Без интернета библиотека недоступна, будет plain text.
-- **Voice** — зависит от Web Speech API (Chrome/Edge). В Firefox/Safari может быть недоступен.
+- **Voice** — в разработке (stub). После настройки STT_HTTP_URL будет работать через faster-whisper.
 - **Web search** — зависит от SerpApi. Без API ключа поиск недоступен.
 - **Файловая память** — без БД. При сотнях сессий может быть медленной запись на диск.
-- **Нет векторного поиска** — только keywoard matching в памяти.
+- **Нет векторного поиска** — только keyword matching в памяти.
+- **Memory tools (remember_fact и др.)** — не в `TOOLS` dict, а в `MEMORY_TOOLS`, обрабатываются отдельно в `execute_tool`.
