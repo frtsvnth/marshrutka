@@ -11,7 +11,11 @@
       "required": true,
       "default": null,
       "placeholder": "",
-      "options": []
+      "options": [],
+      "helper_text": "",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
     },
     {
       "key": "speech_rate",
@@ -20,7 +24,11 @@
       "required": false,
       "default": null,
       "placeholder": "",
-      "options": []
+      "options": [],
+      "helper_text": "",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
     },
     {
       "key": "voice",
@@ -37,7 +45,11 @@
         "Ost_24000",
         "Pon_24000",
         "Kin_24000"
-      ]
+      ],
+      "helper_text": "",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
     },
     {
       "key": "landscape",
@@ -46,7 +58,11 @@
       "required": false,
       "default": null,
       "placeholder": "",
-      "options": []
+      "options": [],
+      "helper_text": "",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
     },
     {
       "key": "telegram_enabled",
@@ -55,7 +71,11 @@
       "required": false,
       "default": null,
       "placeholder": "",
-      "options": []
+      "options": [],
+      "helper_text": "",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
     }
   ],
   "jobs": [
@@ -90,5 +110,16 @@
   "config": {
     "api_url": "http://141.136.44.9:8000",
     "integration_type": "api"
+  },
+  "defaults": {
+    "input_values": {},
+    "publish_profile_id": "",
+    "queue_title_template": "",
+    "last_used_values": {}
+  },
+  "primary_artifact": {
+    "artifact_key": "final_video",
+    "label": "Финальное видео",
+    "expected_extension": "mp4"
   }
 }

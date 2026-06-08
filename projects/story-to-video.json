@@ -56,5 +56,16 @@
   "config": {
     "api_url": "http://141.136.44.9:8001",
     "integration_type": "api"
+  },
+  "defaults": {
+    "input_values": {},
+    "publish_profile_id": "",
+    "queue_title_template": "",
+    "last_used_values": {}
+  },
+  "primary_artifact": {
+    "artifact_key": "final_video",
+    "label": "Финальное видео",
+    "expected_extension": "mp4"
   }
 }

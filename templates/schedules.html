@@ -2,15 +2,20 @@
 {% block title %}Расписания{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>Расписания</h1>
-  <div class="description">Cron-запуски по всем проектам. Добавлять расписания можно со страницы каждого проекта.</div>
+  <div class="flex" style="justify-content: space-between; align-items: center;">
+    <div>
+      <h1>Расписания</h1>
+      <div class="description">Queue-driven cron-запуски. Каждое расписание при срабатывании запускает первый элемент из очереди проекта.</div>
+    </div>
+    <a href="/schedules/help" class="btn btn-outline btn-sm">❓ Как работают расписания</a>
+  </div>
 </div>
 
 {% if schedules %}
 <div class="card">
   <div class="table-wrap">
   <table>
-    <tr><th>Расписание</th><th>Проект</th><th>Cron</th><th>Последний запуск</th><th>Статус</th><th></th></tr>
+    <tr><th>Расписание</th><th>Проект</th><th>Cron</th><th>Очередь проекта</th><th>Последний запуск</th><th>Статус</th><th></th></tr>
     {% for s in schedules %}
     <tr>
       <td>
@@ -19,6 +24,14 @@
       </td>
       <td><a href="/projects/{{ s.project_id }}" style="font-size: .83rem;">{{ projects.get(s.project_id, s.project_id) }}</a></td>
       <td class="mono">{{ s.cron_expression }}</td>
+      <td style="font-size: .8rem; color: var(--text-muted);">
+        {% set qs = s._queue_summary %}
+        {% if qs %}
+          {{ qs.queued }} в очереди, {{ qs.total }} всего
+        {% else %}
+          —
+        {% endif %}
+      </td>
       <td style="font-size: .8rem; color: var(--text-muted);">{{ s.last_run_at | moscow_time('%d.%m %H:%M') }}</td>
       <td><span class="tag tag-{{ 'success' if s.enabled else 'pending' }}">{{ 'активно' if s.enabled else 'приостановлено' }}</span></td>
       <td>
@@ -33,7 +46,7 @@
 </div>
 {% else %}
 <div class="card">
-  <div class="empty-state">Расписаний пока нет. Откройте проект и добавьте cron-расписание со страницы проекта.</div>
+  <div class="empty-state">Расписаний пока нет. Откройте проект и добавьте cron-расписание со страницы проекта. Расписание будет запускать первый элемент из очереди проекта.</div>
 </div>
 {% endif %}
 {% endblock %}

@@ -1,4 +1,6 @@
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -22,3 +24,11 @@ ROUTERAI_API_KEY = os.environ.get("ROUTERAI_API_KEY", "")
 ROUTERAI_MODEL = os.environ.get("ROUTERAI_MODEL", "deepseek/deepseek-v4-flash")
 SERPAPI_API_KEY = os.environ.get("SERPAPI_API_KEY", "")
 STT_HTTP_URL = os.environ.get("STT_HTTP_URL", "http://141.136.44.9:9000/transcribe")
+
+
+def moscow_time(dt: datetime | None, fmt: str = "%d.%m %H:%M") -> str:
+    if dt is None:
+        return "—"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(ZoneInfo("Europe/Moscow")).strftime(fmt)

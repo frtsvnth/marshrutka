@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from models import Run, Schedule, Project, PublishProfile, PublishRequest, PublishPlatform
+from models import (
+    Run, Schedule, Project, PublishProfile, PublishRequest, PublishPlatform,
+    QueueItem, QueueItemStatus,
+)
 from registry import load_projects, get_project, save_project
 from scheduler import add_schedule, remove_schedule, reload_schedules
-from storage import runs_store, schedules_store, profiles_store, publish_requests_store
+from storage import runs_store, schedules_store, profiles_store, publish_requests_store, queue_store
 from runner import run_project
 from remote_sync import fetch_remote_jobs, fetch_remote_job_details
 
@@ -44,10 +47,11 @@ async def update_project(project_id: str, project: Project):
 async def create_run(body: dict):
     project_id = body.get("project_id", "")
     input_data = body.get("input", {})
+    queue_item_id = body.get("queue_item_id", "")
     p = get_project(project_id)
     if not p:
         raise HTTPException(404, "Project not found")
-    run = await run_project(project_id, input_data)
+    run = await run_project(project_id, input_data, queue_item_id=queue_item_id)
     return run
 
 
@@ -78,6 +82,169 @@ async def get_run_logs(run_id: str):
     }
 
 
+# ── Queue API ──
+
+
+@router.get("/projects/{project_id}/queue")
+async def get_project_queue(project_id: str):
+    p = get_project(project_id)
+    if not p:
+        raise HTTPException(404, "Project not found")
+    return queue_store.list_items(project_id)
+
+
+@router.get("/projects/{project_id}/queue/summary")
+async def get_project_queue_summary(project_id: str):
+    p = get_project(project_id)
+    if not p:
+        raise HTTPException(404, "Project not found")
+    return queue_store.get_queue_summary(project_id)
+
+
+@router.get("/projects/{project_id}/queue/{queue_item_id}")
+async def get_queue_item(project_id: str, queue_item_id: str):
+    p = get_project(project_id)
+    if not p:
+        raise HTTPException(404, "Project not found")
+    item = queue_store.get_item(project_id, queue_item_id)
+    if not item:
+        raise HTTPException(404, "Queue item not found")
+    return item
+
+
+@router.post("/projects/{project_id}/queue")
+async def create_queue_item(project_id: str, item: QueueItem):
+    p = get_project(project_id)
+    if not p:
+        raise HTTPException(404, "Project not found")
+    item.project_id = project_id
+    items = queue_store.list_items(project_id)
+    max_pos = max((i.position for i in items), default=-1)
+    if item.position <= 0:
+        item.position = max_pos + 1
+    queue_store.save_item(project_id, item)
+    return item
+
+
+@router.put("/projects/{project_id}/queue/{queue_item_id}")
+async def update_queue_item(project_id: str, queue_item_id: str, item: QueueItem):
+    existing = queue_store.get_item(project_id, queue_item_id)
+    if not existing:
+        raise HTTPException(404, "Queue item not found")
+    item.queue_item_id = queue_item_id
+    item.project_id = project_id
+    item.updated_at = __import__("datetime").datetime.utcnow()
+    queue_store.save_item(project_id, item)
+    return item
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/status")
+async def set_queue_item_status(project_id: str, queue_item_id: str, body: dict):
+    status_str = body.get("status", "")
+    try:
+        new_status = QueueItemStatus(status_str)
+    except ValueError:
+        raise HTTPException(400, f"Invalid status: {status_str}")
+    item = queue_store.get_item(project_id, queue_item_id)
+    if not item:
+        raise HTTPException(404, "Queue item not found")
+    item.status = new_status
+    item.updated_at = __import__("datetime").datetime.utcnow()
+    queue_store.save_item(project_id, item)
+    return item
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/launch")
+async def launch_queue_item(project_id: str, queue_item_id: str):
+    item = queue_store.get_item(project_id, queue_item_id)
+    if not item:
+        raise HTTPException(404, "Queue item not found")
+    p = get_project(project_id)
+    if not p:
+        raise HTTPException(404, "Project not found")
+    if item.status not in (QueueItemStatus.queued, QueueItemStatus.draft, QueueItemStatus.failed):
+        raise HTTPException(400, f"Cannot launch item in status: {item.status.value}")
+    try:
+        item.status = QueueItemStatus.launching
+        item.updated_at = __import__("datetime").datetime.utcnow()
+        queue_store.save_item(project_id, item)
+        run = await run_project(project_id, item.payload, queue_item_id=queue_item_id)
+        item.status = QueueItemStatus.launched
+        item.last_launch_at = __import__("datetime").datetime.utcnow()
+        item.last_run_id = run.run_id
+        item.last_remote_job_id = run.remote_job_id
+        item.last_error = ""
+        item.launch_history.append({
+            "run_id": run.run_id,
+            "remote_job_id": run.remote_job_id,
+            "launched_at": item.last_launch_at.isoformat() if item.last_launch_at else "",
+            "remote_status": run.remote_status.value,
+        })
+        item.updated_at = __import__("datetime").datetime.utcnow()
+        queue_store.save_item(project_id, item)
+        return {"ok": True, "run_id": run.run_id}
+    except Exception as e:
+        item.status = QueueItemStatus.failed
+        item.last_error = str(e)
+        item.updated_at = __import__("datetime").datetime.utcnow()
+        queue_store.save_item(project_id, item)
+        raise HTTPException(500, f"Launch failed: {e}")
+
+
+@router.delete("/projects/{project_id}/queue/{queue_item_id}")
+async def delete_queue_item(project_id: str, queue_item_id: str):
+    ok = queue_store.delete_item(project_id, queue_item_id)
+    if not ok:
+        raise HTTPException(404, "Queue item not found")
+    return {"ok": True}
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/move")
+async def move_queue_item(project_id: str, queue_item_id: str, body: dict):
+    direction = body.get("direction", "up")
+    item = queue_store.get_item(project_id, queue_item_id)
+    if not item:
+        raise HTTPException(404, "Queue item not found")
+    items = sorted(queue_store.list_items(project_id), key=lambda i: i.position)
+    idx = next((i for i, it in enumerate(items) if it.queue_item_id == queue_item_id), -1)
+    if idx < 0:
+        raise HTTPException(404, "Queue item not found in list")
+    swap_idx = idx - 1 if direction == "up" else idx + 1
+    if swap_idx < 0 or swap_idx >= len(items):
+        raise HTTPException(400, "Cannot move further")
+    items[idx].position, items[swap_idx].position = items[swap_idx].position, items[idx].position
+    queue_store.save_item(project_id, items[idx])
+    queue_store.save_item(project_id, items[swap_idx])
+    return {"ok": True}
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/duplicate")
+async def duplicate_queue_item(project_id: str, queue_item_id: str):
+    item = queue_store.get_item(project_id, queue_item_id)
+    if not item:
+        raise HTTPException(404, "Queue item not found")
+    import copy, uuid
+    new_item = copy.deepcopy(item)
+    new_item.queue_item_id = f"q_{uuid.uuid4().hex[:12]}"
+    new_item.title = f"{item.title} (копия)" if item.title else "Копия"
+    new_item.status = QueueItemStatus.draft
+    new_item.created_at = __import__("datetime").datetime.utcnow()
+    new_item.updated_at = __import__("datetime").datetime.utcnow()
+    new_item.last_launch_at = None
+    new_item.last_run_id = None
+    new_item.last_remote_job_id = None
+    new_item.last_error = ""
+    new_item.launch_history = []
+    items = queue_store.list_items(project_id)
+    max_pos = max((i.position for i in items), default=-1)
+    new_item.position = max_pos + 1
+    queue_store.save_item(project_id, new_item)
+    return new_item
+
+
+# ── Schedules API ──
+
+
 @router.get("/schedules")
 async def list_schedules():
     return schedules_store.list()
@@ -88,6 +255,17 @@ async def create_schedule(schedule: Schedule):
     p = get_project(schedule.project_id)
     if not p:
         raise HTTPException(404, "Project not found")
+    add_schedule(schedule)
+    return schedule
+
+
+@router.put("/schedules/{schedule_id}")
+async def update_schedule(schedule_id: str, schedule: Schedule):
+    existing = schedules_store.get(schedule_id, "schedule_id")
+    if not existing:
+        raise HTTPException(404, "Schedule not found")
+    from scheduler import remove_schedule
+    remove_schedule(schedule_id)
     add_schedule(schedule)
     return schedule
 

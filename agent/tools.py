@@ -22,6 +22,7 @@ from storage import runs_store, schedules_store
 from runner import run_project
 from scheduler import add_schedule
 from models import Schedule
+from config import moscow_time
 
 
 def count_words(text: str) -> dict:
@@ -69,7 +70,7 @@ def get_recent_runs(project_id: str = "", limit: int = 10) -> dict:
                     "run_id": r.run_id,
                     "project_id": r.project_id,
                     "status": r.orchestration_status.value,
-                    "created_at": str(r.created_at),
+                    "created_at": moscow_time(r.created_at, "%d.%m.%Y %H:%M"),
                 }
                 for r in runs
             ],

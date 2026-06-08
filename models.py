@@ -8,6 +8,34 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class QueueItemStatus(str, Enum):
+    draft = "draft"
+    queued = "queued"
+    launching = "launching"
+    launched = "launched"
+    failed = "failed"
+    paused = "paused"
+    archived = "archived"
+
+
+QUEUE_STATUS_LABELS: dict[QueueItemStatus, str] = {
+    QueueItemStatus.draft: "Черновик",
+    QueueItemStatus.queued: "В очереди",
+    QueueItemStatus.launching: "Запускается",
+    QueueItemStatus.launched: "Запущен",
+    QueueItemStatus.failed: "Ошибка",
+    QueueItemStatus.paused: "Приостановлен",
+    QueueItemStatus.archived: "Архив",
+}
+
+
+class QueueItemSource(str, Enum):
+    manual = "manual"
+    agent = "agent"
+    api = "api"
+    imported = "imported"
+
+
 class OrchestrationStatus(str, Enum):
     draft = "draft"
     submitting = "submitting"
@@ -93,6 +121,13 @@ class SyncSource(str, Enum):
     merged = "merged"
 
 
+class ProjectDefaults(BaseModel):
+    input_values: dict[str, Any] = {}
+    publish_profile_id: str = ""
+    queue_title_template: str = ""
+    last_used_values: dict[str, Any] = {}
+
+
 class ProjectInputField(BaseModel):
     key: str
     label: str
@@ -101,6 +136,10 @@ class ProjectInputField(BaseModel):
     default: Any = None
     placeholder: str = ""
     options: list[str] = []
+    helper_text: str = ""
+    visible: bool = True
+    supports_default: bool = True
+    deprecated: bool = False
 
 
 class ProjectPublishTarget(BaseModel):
@@ -140,6 +179,12 @@ class ProjectPublishBinding(BaseModel):
     platform_defaults: dict[str, Any] = {}
 
 
+class PrimaryArtifactConfig(BaseModel):
+    artifact_key: str = "final_video"
+    label: str = "Финальное видео"
+    expected_extension: str = "mp4"
+
+
 class Project(BaseModel):
     project_id: str
     display_name: str
@@ -151,6 +196,8 @@ class Project(BaseModel):
     integration: ProjectIntegration = ProjectIntegration()
     publish_bindings: list[ProjectPublishBinding] = []
     config: dict[str, Any] = {}
+    defaults: ProjectDefaults = ProjectDefaults()
+    primary_artifact: PrimaryArtifactConfig = PrimaryArtifactConfig()
 
 
 class RemoteJobSummary(BaseModel):
@@ -208,6 +255,7 @@ class Run(BaseModel):
     sync_error: str | None = None
     publish_status: str | None = None
     publish_profile_id: str | None = None
+    queue_item_id: str | None = None
 
 
 class RemoteJobRef(BaseModel):
@@ -231,11 +279,31 @@ class Schedule(BaseModel):
     project_id: str
     title: str = ""
     cron_expression: str
-    input: dict[str, Any] = {}
     enabled: bool = True
     last_run_at: datetime | None = None
     next_run_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class QueueItem(BaseModel):
+    queue_item_id: str = Field(default_factory=lambda: f"q_{uuid.uuid4().hex[:12]}")
+    project_id: str
+    title: str = ""
+    payload: dict[str, Any] = {}
+    status: QueueItemStatus = QueueItemStatus.draft
+    position: int = 0
+    source: QueueItemSource = QueueItemSource.manual
+    notes: str = ""
+    labels: list[str] = []
+    default_publish_profile_id: str = ""
+    publish_artifact_key_override: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_launch_at: datetime | None = None
+    last_run_id: str | None = None
+    last_remote_job_id: str | None = None
+    last_error: str = ""
+    launch_history: list[dict[str, Any]] = []
 
 
 class PublishProfile(BaseModel):
@@ -365,6 +433,44 @@ def sanitize_filename(name: str) -> str:
     safe = name.replace(" ", "_")
     safe = "".join(c for c in safe if c.isalnum() or c in "._-")
     return safe or "artifact"
+
+
+def resolve_primary_artifact(
+    artifacts: dict[str, Any],
+    project_id: str,
+    primary_artifact_key: str = "final_video",
+    artifact_key_override: str = "",
+) -> dict | None:
+    key = artifact_key_override or primary_artifact_key
+    if key in artifacts and artifacts[key]:
+        raw = str(artifacts[key])
+        filename = raw.split("/")[-1] if "/" in raw else (raw if "." in raw else resolve_artifact_filename(key, project_id))
+        ext = get_artifact_extension(filename)
+        return {
+            "key": key,
+            "filename": filename,
+            "extension": ext,
+            "resolved": True,
+            "overridden": bool(artifact_key_override),
+        }
+    video_artifacts = []
+    for ak, av in artifacts.items():
+        if av and isinstance(av, str):
+            fn = av.split("/")[-1] if "/" in av else av
+            fext = get_artifact_extension(fn) if "." in fn else ""
+            if fext in ("mp4", "webm", "mov"):
+                video_artifacts.append((ak, fn))
+    if len(video_artifacts) == 1:
+        vk, vfn = video_artifacts[0]
+        ext = get_artifact_extension(vfn)
+        return {
+            "key": vk,
+            "filename": vfn,
+            "extension": ext,
+            "resolved": True,
+            "fallback": True,
+        }
+    return None
 
 
 

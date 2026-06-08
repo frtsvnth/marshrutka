@@ -7,7 +7,7 @@ from pathlib import Path
 
 from registry import load_projects
 from storage import runs_store, schedules_store
-from config import DATA_DIR
+from config import DATA_DIR, moscow_time
 
 logger = logging.getLogger(__name__)
 

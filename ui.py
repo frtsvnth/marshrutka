@@ -18,10 +18,12 @@ from models import (
     ORCHESTRATION_LABELS, REMOTE_STATUS_LABELS,
     resolve_artifact_filename, get_artifact_extension,
     is_previewable, get_preview_kind, sanitize_filename,
-    PREVIEW_CONTENT_TYPES,
+    PREVIEW_CONTENT_TYPES, resolve_primary_artifact,
+    QueueItem, QueueItemStatus, QUEUE_STATUS_LABELS, QueueItemSource,
+    ProjectDefaults,
 )
 from registry import load_projects, get_project, get_enabled_jobs, save_project
-from storage import runs_store, schedules_store, profiles_store, publish_requests_store
+from storage import runs_store, schedules_store, profiles_store, publish_requests_store, queue_store
 from runner import run_project
 from scheduler import add_schedule, remove_schedule
 from remote_sync import fetch_remote_jobs, fetch_remote_job_details, sync_run_status, build_merged_runs
@@ -64,6 +66,7 @@ def _normalize_artifact_list(
     project_id: str,
     remote_job_id: str,
     run_id: str,
+    primary_key: str = "",
 ) -> list[dict]:
     result = []
     for key, val in raw_artifacts.items():
@@ -74,6 +77,7 @@ def _normalize_artifact_list(
         ext = get_artifact_extension(filename)
         previewable = is_previewable(ext)
         preview_kind = get_preview_kind(ext) if previewable else ""
+        is_primary = bool(primary_key) and key == primary_key
         result.append({
             "key": key,
             "filename": filename,
@@ -84,8 +88,9 @@ def _normalize_artifact_list(
             "download_url": f"/runs/{run_id}/artifacts/{key}",
             "preview_url": f"/runs/{run_id}/artifacts/{key}/preview",
             "raw_value": val,
+            "is_primary": is_primary,
         })
-    result.sort(key=lambda a: a["filename"])
+    result.sort(key=lambda a: (not a["is_primary"], a["filename"]))
     return result
 
 
@@ -94,8 +99,49 @@ def render(name: str, **context) -> str:
     return tpl.render(**context)
 
 
+# ── Dashboard (main page) ──
+
+
 @router.get("/", response_class=HTMLResponse)
-async def projects_page(request: Request):
+async def dashboard_page(request: Request):
+    projects = load_projects()
+    project_cards = []
+    all_schedules = schedules_store.list()
+    for p in projects:
+        summary = queue_store.get_queue_summary(p.project_id)
+        p_schedules = [s for s in all_schedules if s.project_id == p.project_id]
+        active_schedules = [s for s in p_schedules if s.enabled]
+        next_run = None
+        if active_schedules:
+            next_run = min(
+                (s.last_run_at or datetime.min for s in active_schedules),
+                default=None,
+            )
+        runs = [r for r in runs_store.list() if r.project_id == p.project_id]
+        last_run = max(runs, key=lambda r: r.created_at, default=None) if runs else None
+        project_cards.append({
+            "project": p,
+            "queue_summary": summary,
+            "schedule_count": len(p_schedules),
+            "active_schedule_count": len(active_schedules),
+            "last_run": last_run,
+            "primary_artifact": {
+                "key": p.primary_artifact.artifact_key,
+                "label": p.primary_artifact.label,
+            },
+        })
+    project_cards.sort(key=lambda c: c["project"].display_name)
+    return HTMLResponse(render(
+        "dashboard.html", request=request,
+        project_cards=project_cards,
+    ))
+
+
+# ── Project pages ──
+
+
+@router.get("/projects", response_class=HTMLResponse)
+async def projects_list_page(request: Request):
     projects = load_projects()
     return HTMLResponse(render("projects.html", request=request, projects=projects))
 
@@ -154,24 +200,194 @@ async def project_page(request: Request, project_id: str):
     project_runs = [r for r in runs if r.project_id == project_id][:50]
     schedules = [s for s in schedules_store.list() if s.project_id == project_id]
     profiles = profiles_store.list()
+    queue_items = queue_store.list_items(project_id)
+    queue_items.sort(key=lambda i: i.position)
 
     remote_snapshot = await fetch_remote_jobs(project.integration, project_id)
     merged = build_merged_runs(project_id, project_runs, remote_snapshot)
+    queue_summary = queue_store.get_queue_summary(project_id)
 
     return HTMLResponse(render(
         "project.html", request=request, project=project, jobs=jobs,
         runs=project_runs, merged_runs=merged, schedules=schedules,
         profiles=profiles, remote_snapshot=remote_snapshot,
         last_sync=remote_snapshot.synced_at if remote_snapshot else None,
+        queue_items=queue_items, queue_summary=queue_summary,
+        queue_status_labels=QUEUE_STATUS_LABELS,
     ))
+
+
+# ── Quick launch / enqueue / draft ──
 
 
 @router.post("/projects/{project_id}/run", response_class=RedirectResponse)
 async def run_project_form(project_id: str, request: Request):
     form = await request.form()
     input_data = dict(form)
-    run = await run_project(project_id, input_data)
-    return RedirectResponse(f"/runs/{run.run_id}", status_code=303)
+    action = input_data.pop("_action", "launch_now")
+    title = input_data.pop("_title", "")
+    notes = input_data.pop("_notes", "")
+    publish_profile_id = input_data.pop("_publish_profile", "")
+
+    clean = {}
+    for k, v in input_data.items():
+        if not k.startswith("_") and k not in ("field_count",):
+            clean[k] = v
+
+    project = get_project(project_id)
+
+    if action == "add_to_queue":
+        items = queue_store.list_items(project_id)
+        max_pos = max((i.position for i in items), default=-1)
+        queue_item = QueueItem(
+            project_id=project_id,
+            title=title or f"Запуск #{max_pos + 2}",
+            payload=clean,
+            status=QueueItemStatus.queued,
+            position=max_pos + 1,
+            source=QueueItemSource.manual,
+            notes=notes,
+            default_publish_profile_id=publish_profile_id,
+        )
+        if project:
+            queue_item.publish_artifact_key_override = project.primary_artifact.artifact_key
+        queue_store.save_item(project_id, queue_item)
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    elif action == "save_draft":
+        items = queue_store.list_items(project_id)
+        max_pos = max((i.position for i in items), default=-1)
+        queue_item = QueueItem(
+            project_id=project_id,
+            title=title or f"Черновик #{max_pos + 2}",
+            payload=clean,
+            status=QueueItemStatus.draft,
+            position=max_pos + 1,
+            source=QueueItemSource.manual,
+            notes=notes,
+            default_publish_profile_id=publish_profile_id,
+        )
+        queue_store.save_item(project_id, queue_item)
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+    else:
+        run = await run_project(project_id, clean)
+        return RedirectResponse(f"/runs/{run.run_id}", status_code=303)
+
+
+# ── Queue management routes ──
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/launch", response_class=RedirectResponse)
+async def launch_queue_item_form(project_id: str, queue_item_id: str):
+    item = queue_store.get_item(project_id, queue_item_id)
+    if not item:
+        return HTMLResponse("Item not found", status_code=404)
+    if item.status not in (QueueItemStatus.queued, QueueItemStatus.draft, QueueItemStatus.failed):
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+    try:
+        item.status = QueueItemStatus.launching
+        item.updated_at = datetime.utcnow()
+        queue_store.save_item(project_id, item)
+        run = await run_project(project_id, item.payload, queue_item_id=queue_item_id)
+        item.status = QueueItemStatus.launched
+        item.last_launch_at = datetime.utcnow()
+        item.last_run_id = run.run_id
+        item.last_remote_job_id = run.remote_job_id
+        item.last_error = ""
+        item.launch_history.append({
+            "run_id": run.run_id,
+            "remote_job_id": run.remote_job_id,
+            "launched_at": item.last_launch_at.isoformat(),
+            "remote_status": run.remote_status.value,
+            "trigger": "manual",
+        })
+        item.updated_at = datetime.utcnow()
+        queue_store.save_item(project_id, item)
+        return RedirectResponse(f"/runs/{run.run_id}", status_code=303)
+    except Exception as e:
+        item.status = QueueItemStatus.failed
+        item.last_error = str(e)
+        item.updated_at = datetime.utcnow()
+        queue_store.save_item(project_id, item)
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/status", response_class=RedirectResponse)
+async def set_queue_item_status_form(project_id: str, queue_item_id: str, request: Request):
+    form = await request.form()
+    new_status = form.get("status", "")
+    item = queue_store.get_item(project_id, queue_item_id)
+    if item:
+        try:
+            item.status = QueueItemStatus(new_status)
+            item.updated_at = datetime.utcnow()
+            queue_store.save_item(project_id, item)
+        except ValueError:
+            pass
+    return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/delete", response_class=RedirectResponse)
+async def delete_queue_item_form(project_id: str, queue_item_id: str):
+    queue_store.delete_item(project_id, queue_item_id)
+    return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/duplicate", response_class=RedirectResponse)
+async def duplicate_queue_item_form(project_id: str, queue_item_id: str):
+    item = queue_store.get_item(project_id, queue_item_id)
+    if item:
+        import copy, uuid
+        new_item = copy.deepcopy(item)
+        new_item.queue_item_id = f"q_{uuid.uuid4().hex[:12]}"
+        new_item.title = f"{item.title} (копия)" if item.title else "Копия"
+        new_item.status = QueueItemStatus.draft
+        new_item.created_at = datetime.utcnow()
+        new_item.updated_at = datetime.utcnow()
+        new_item.last_launch_at = None
+        new_item.last_run_id = None
+        new_item.last_remote_job_id = None
+        new_item.last_error = ""
+        new_item.launch_history = []
+        items = queue_store.list_items(project_id)
+        max_pos = max((i.position for i in items), default=-1)
+        new_item.position = max_pos + 1
+        queue_store.save_item(project_id, new_item)
+    return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/move", response_class=RedirectResponse)
+async def move_queue_item_form(project_id: str, queue_item_id: str, request: Request):
+    form = await request.form()
+    direction = form.get("direction", "up")
+    item = queue_store.get_item(project_id, queue_item_id)
+    if item:
+        items = sorted(queue_store.list_items(project_id), key=lambda i: i.position)
+        idx = next((i for i, it in enumerate(items) if it.queue_item_id == queue_item_id), -1)
+        if idx >= 0:
+            swap_idx = idx - 1 if direction == "up" else idx + 1
+            if 0 <= swap_idx < len(items):
+                items[idx].position, items[swap_idx].position = items[swap_idx].position, items[idx].position
+                queue_store.save_item(project_id, items[idx])
+                queue_store.save_item(project_id, items[swap_idx])
+    return RedirectResponse(f"/projects/{project_id}", status_code=303)
+
+
+# ── Launch next ──
+
+
+@router.post("/projects/{project_id}/launch-next", response_class=RedirectResponse)
+async def launch_next_queue_item(project_id: str):
+    items = sorted(queue_store.list_items(project_id), key=lambda i: i.position)
+    queued = [i for i in items if i.status == QueueItemStatus.queued]
+    if not queued:
+        return RedirectResponse(f"/projects/{project_id}", status_code=303)
+    candidate = queued[0]
+    return await launch_queue_item_form(project_id, candidate.queue_item_id)
+
+
+# ── Run detail page ──
 
 
 @router.get("/runs/{run_id}", response_class=HTMLResponse)
@@ -184,6 +400,7 @@ async def run_detail_page(request: Request, run_id: str):
     publish_reqs = publish_requests_store.filter(run_id=run_id)
 
     remote_details = None
+    primary_artifact = None
     if run.remote_job_id and project and project.integration.api_url:
         remote_details = await fetch_remote_job_details(
             project.integration, run.project_id, run.remote_job_id,
@@ -193,19 +410,37 @@ async def run_detail_page(request: Request, run_id: str):
             run = runs_store.get(run_id)
 
     normalized_artifacts = []
+    primary_artifact_key = project.primary_artifact.artifact_key if project else "final_video"
+
     if remote_details and remote_details.artifacts:
         normalized_artifacts = _normalize_artifact_list(
             remote_details.artifacts,
             run.project_id,
             run.remote_job_id or "",
             run.run_id,
+            primary_key=primary_artifact_key,
         )
+        queue_item = None
+        if run.queue_item_id:
+            queue_item = queue_store.get_item(run.project_id, run.queue_item_id)
+        override_key = ""
+        if queue_item and queue_item.publish_artifact_key_override:
+            override_key = queue_item.publish_artifact_key_override
+        pa = resolve_primary_artifact(
+            remote_details.artifacts,
+            run.project_id,
+            primary_artifact_key=primary_artifact_key,
+            artifact_key_override=override_key,
+        )
+        if pa:
+            primary_artifact = pa
 
     return HTMLResponse(render(
         "run.html", request=request, run=run, project=project,
         profiles=profiles, publish_reqs=publish_reqs,
         remote_details=remote_details,
         normalized_artifacts=normalized_artifacts,
+        primary_artifact=primary_artifact,
         orch_labels=ORCHESTRATION_LABELS,
         remote_status_labels=REMOTE_STATUS_LABELS,
     ))
@@ -257,11 +492,24 @@ async def preview_artifact(run_id: str, artifact_key: str):
     return await _fetch_and_serve_artifact(run_id, artifact_key, "inline")
 
 
+# ── Schedules ──
+
+
 @router.get("/schedules", response_class=HTMLResponse)
 async def schedules_page(request: Request):
     schedules = schedules_store.list()
     projects = {p.project_id: p.display_name for p in load_projects()}
-    return HTMLResponse(render("schedules.html", request=request, schedules=schedules, projects=projects))
+    for s in schedules:
+        s._queue_summary = queue_store.get_queue_summary(s.project_id) if s.project_id else {}
+    return HTMLResponse(render(
+        "schedules.html", request=request,
+        schedules=schedules, projects=projects,
+    ))
+
+
+@router.get("/schedules/help", response_class=HTMLResponse)
+async def schedules_help_page(request: Request):
+    return HTMLResponse(render("schedules_help.html", request=request))
 
 
 @router.post("/schedules/create", response_class=RedirectResponse)
@@ -271,7 +519,12 @@ async def create_schedule_form(
     title: str = Form(""),
     enabled: bool = Form(True),
 ):
-    sched = Schedule(project_id=project_id, cron_expression=cron_expression, title=title, enabled=enabled)
+    sched = Schedule(
+        project_id=project_id,
+        cron_expression=cron_expression,
+        title=title,
+        enabled=enabled,
+    )
     add_schedule(sched)
     return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
@@ -282,6 +535,9 @@ async def delete_schedule_form(schedule_id: str):
     project_id = sched.project_id if sched else ""
     remove_schedule(schedule_id)
     return RedirectResponse(f"/projects/{project_id}" if project_id else "/schedules", status_code=303)
+
+
+# ── Publish profiles ──
 
 
 @router.get("/publish/profiles", response_class=HTMLResponse)
@@ -400,6 +656,9 @@ async def create_publish_request_form(request: Request):
     return RedirectResponse(f"/runs/{req.run_id}", status_code=303)
 
 
+# ── Helpers ──
+
+
 def _parse_fields(form_data: dict) -> list[ProjectInputField]:
     fields = []
     count = int(form_data.get("field_count", "0"))
@@ -412,7 +671,21 @@ def _parse_fields(form_data: dict) -> list[ProjectInputField]:
         required = f"field_req_{i}" in form_data
         options_raw = form_data.get(f"field_options_{i}", "")
         options = [o.strip() for o in options_raw.split(",") if o.strip()] if options_raw else []
-        fields.append(ProjectInputField(key=key, label=label, type=ftype, required=required, options=options))
+        helper = form_data.get(f"field_helper_{i}", "")
+        visible = f"field_visible_{i}" not in form_data or form_data.get(f"field_visible_{i}") != "off"
+        supports_default = f"field_supports_default_{i}" not in form_data or form_data.get(f"field_supports_default_{i}") != "off"
+        field = ProjectInputField(
+            key=key, label=label, type=ftype, required=required,
+            options=options, helper_text=helper,
+            visible=visible, supports_default=supports_default,
+        )
+        default_raw = form_data.get(f"field_default_{i}", "")
+        if default_raw:
+            field.default = default_raw
+        placeholder_raw = form_data.get(f"field_placeholder_{i}", "")
+        if placeholder_raw:
+            field.placeholder = placeholder_raw
+        fields.append(field)
     return fields
 
 
@@ -468,6 +741,17 @@ def _build_project(form_data: dict, fields: list[ProjectInputField], existing_id
 
     auto_sync = form_data.get("auto_sync") == "on"
 
+    primary_artifact_key = form_data.get("primary_artifact_key", "final_video")
+    primary_artifact_label = form_data.get("primary_artifact_label", "Финальное видео")
+
+    defaults_input_str = form_data.get("defaults_input_json", "")
+    defaults_input = {}
+    if defaults_input_str:
+        try:
+            defaults_input = _json.loads(defaults_input_str)
+        except Exception:
+            pass
+
     return Project(
         project_id=pid,
         display_name=form_data.get("display_name", ""),
@@ -491,6 +775,11 @@ def _build_project(form_data: dict, fields: list[ProjectInputField], existing_id
         config={
             "api_url": api_url,
             "integration_type": form_data.get("integration_type", "api"),
+        },
+        defaults=ProjectDefaults(input_values=defaults_input),
+        primary_artifact={
+            "artifact_key": primary_artifact_key,
+            "label": primary_artifact_label,
         },
     )
 

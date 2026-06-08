@@ -5,24 +5,22 @@
 {% set orch_ru = {'draft':'черновик','submitting':'отправка','linked':'связан','sync_pending':'ожидает синхр.','sync_error':'ошибка синхр.','detached':'отвязан','cancelled_locally':'отменён'} %}
 {% set remote_ru = {'pending':'ожидает','running':'выполняется','success':'успех','failed':'ошибка','cancelled':'отменён','unknown':'неизвестно'} %}
 
-<div class="breadcrumb"><a href="/">Проекты</a> / {{ project.display_name }}</div>
+<div class="breadcrumb"><a href="/">Дашборд</a> / {{ project.display_name }}</div>
 
-{# ── Project header with integration info ── #}
+{# ── Project header ── #}
 <div class="page-header">
   <div class="flex" style="justify-content: space-between; align-items: center;">
     <div>
       <h1>{{ project.display_name }}</h1>
       <div class="description">{{ project.description }}</div>
-      <div class="flex gap-2 mt-1" style="font-size: .78rem; color: var(--text-muted);">
+      <div class="flex gap-2 mt-1" style="font-size: .78rem; color: var(--text-muted); flex-wrap: wrap;">
         {% if project.integration.api_url %}
         <span>API: <span class="mono">{{ project.integration.api_url }}</span></span>
         {% endif %}
         {% if last_sync %}
-        <span>Синхронизация: {{ last_sync | moscow_time('%H:%M %d.%m') }}</span>
-        {% else %}
-        <span>Синхронизация: нет данных</span>
+        <span>Синхр.: {{ last_sync | moscow_time('%H:%M %d.%m') }}</span>
         {% endif %}
-        <span>Запусков: {{ merged_runs|length }}</span>
+        <span>Primary: <span class="mono" style="font-size: .75rem;">{{ project.primary_artifact.artifact_key }}</span> ({{ project.primary_artifact.label }})</span>
       </div>
     </div>
     <div class="flex">
@@ -31,7 +29,358 @@
   </div>
 </div>
 
-{# ── PRIMARY SECTION: Последние запуски ── #}
+{# ═══════════════════════════════════════════════════════════════ #}
+{# BLOCK 1: QUEUE                                                     #}
+{# ═══════════════════════════════════════════════════════════════ #}
+<div class="card" id="queue" style="border-color: var(--indigo-light);">
+  <div class="flex" style="justify-content: space-between; align-items: center;">
+    <div class="card-title" style="color: var(--indigo-dark); margin-bottom: 0;">
+      Очередь проекта
+      <span style="font-size: .75rem; font-weight: 400; color: var(--text-light); margin-left: .5rem;">
+        {{ queue_summary.queued }} в очереди · {{ queue_summary.draft }} черновиков · {{ queue_summary.total }} всего
+        {% if queue_summary.failed > 0 %}· <span style="color: var(--failed-text);">{{ queue_summary.failed }} ошибок</span>{% endif %}
+      </span>
+    </div>
+    <div class="flex gap-1">
+      {% if queue_summary.queued > 0 %}
+      <form action="/projects/{{ project.project_id }}/launch-next" method="POST" style="display:inline;">
+        <button class="btn btn-sm btn-success">▶ Запустить следующий</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if queue_items %}
+  <div style="margin-top: .65rem;">
+  {% for qi in queue_items %}
+  {% set qs = qi.status.value %}
+  <div class="flex" style="justify-content: space-between; align-items: center; padding: .5rem .65rem; border: 1px solid var(--border); border-radius: 10px; margin-bottom: .3rem; background: var(--surface);">
+    <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: .5rem;">
+      <span class="tag tag-{{ 'success' if qs == 'launched' else 'running' if qs == 'launching' else 'failed' if qs == 'failed' else 'pending' if qs == 'draft' else 'cancelled' if qs == 'archived' else 'pending' }}" style="font-size: .7rem; flex-shrink: 0; min-width: 70px; text-align: center;">
+        {{ queue_status_labels.get(qi.status, qs) }}
+      </span>
+      <div style="min-width: 0;">
+        <div style="font-size: .84rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ qi.title or 'Без названия' }}</div>
+        <div style="font-size: .72rem; color: var(--text-muted);">
+          pos {{ qi.position }}
+          {% if qi.last_run_id %}· <a href="/runs/{{ qi.last_run_id }}" style="color: var(--text-muted);">последний: {{ qi.last_run_id[:12] }}</a>{% endif %}
+          {% if qi.notes %}· «{{ qi.notes[:30] }}»{% endif %}
+        </div>
+        {% if qi.last_error %}
+        <div style="font-size: .72rem; color: var(--failed-text);">{{ qi.last_error[:60] }}</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex gap-1" style="flex-shrink: 0;">
+      {% if qi.source.value == 'agent' %}
+      <span class="tag tag-sm tag-remote" style="font-size: .65rem;">agent</span>
+      {% endif %}
+      {% if qs in ('queued', 'draft', 'failed') %}
+      <form action="/projects/{{ project.project_id }}/queue/{{ qi.queue_item_id }}/launch" method="POST" style="display:inline;">
+        <button class="btn btn-sm btn-success">▶</button>
+      </form>
+      {% endif %}
+      {% if qs == 'queued' %}
+      <form action="/projects/{{ project.project_id }}/queue/{{ qi.queue_item_id }}/status" method="POST" style="display:inline;">
+        <input type="hidden" name="status" value="paused">
+        <button class="btn btn-sm btn-outline" title="Приостановить">⏸</button>
+      </form>
+      {% endif %}
+      {% if qs == 'paused' %}
+      <form action="/projects/{{ project.project_id }}/queue/{{ qi.queue_item_id }}/status" method="POST" style="display:inline;">
+        <input type="hidden" name="status" value="queued">
+        <button class="btn btn-sm btn-outline" title="Вернуть в очередь">▶</button>
+      </form>
+      {% endif %}
+      {% if qi.launch_history %}
+      <details style="display:inline-block; position: relative;">
+        <summary class="btn btn-sm btn-ghost" style="cursor: pointer;">📋</summary>
+        <div style="position: absolute; right: 0; top: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .5rem; z-index: 10; min-width: 220px; font-size: .75rem; box-shadow: 0 4px 12px rgba(0,0,0,.1);">
+          {% for h in qi.launch_history %}
+          <div style="margin-bottom: .3rem;">
+            <a href="/runs/{{ h.run_id }}">{{ h.run_id[:12] }}</a>
+            {% if h.remote_job_id %}<span class="mono" style="color: var(--text-light);">{{ h.remote_job_id[:12] }}</span>{% endif %}
+            {% if h.trigger %}<span class="tag tag-sm tag-pending">@{{ h.trigger }}</span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+      <form action="/projects/{{ project.project_id }}/queue/{{ qi.queue_item_id }}/duplicate" method="POST" style="display:inline;">
+        <button class="btn btn-sm btn-ghost" title="Дублировать">⧉</button>
+      </form>
+      {% if qi.position > 0 %}
+      <form action="/projects/{{ project.project_id }}/queue/{{ qi.queue_item_id }}/move" method="POST" style="display:inline;">
+        <input type="hidden" name="direction" value="up">
+        <button class="btn btn-sm btn-ghost" title="Вверх">↑</button>
+      </form>
+      {% endif %}
+      <form action="/projects/{{ project.project_id }}/queue/{{ qi.queue_item_id }}/delete" method="POST" style="display:inline;">
+        <button class="btn btn-sm btn-ghost" style="color: var(--failed-text);" title="Удалить">✕</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state" style="margin-top: .5rem;">
+    Очередь пуста. Добавьте элемент через форму быстрого запуска ниже.
+  </div>
+  {% endif %}
+</div>
+
+{# ═══════════════════════════════════════════════════════════════ #}
+{# BLOCK 2: QUICK LAUNCH / ADD TO QUEUE                              #}
+{# ═══════════════════════════════════════════════════════════════ #}
+<div class="card" id="run-form">
+  <div class="flex" style="justify-content: space-between; align-items: center;">
+    <div class="card-title" style="margin-bottom: 0;">Быстрый запуск / Добавить в очередь</div>
+    {% set basic = project.config.get('basic_fields', []) %}
+    {% if basic and project.input_fields|length > basic|length %}
+    <label class="flex" style="font-size: .78rem; color: var(--text-muted); cursor: pointer;">
+      <input type="checkbox" id="modeToggle" onchange="toggleAdvancedMode()" style="margin-right: .3rem;">
+      Расширенные
+    </label>
+    {% endif %}
+  </div>
+  <form action="/projects/{{ project.project_id }}/run" method="POST" style="margin-top: .75rem;">
+    <input type="hidden" name="_action" value="launch_now" id="formAction">
+    {% for field in project.input_fields %}
+    {% if field.visible %}
+    {% set has_advanced = basic and project.input_fields|length > basic|length %}
+    {% set is_basic = not basic or field.key in basic %}
+    <div class="form-group field-group {% if has_advanced and not is_basic %}field-advanced{% endif %}" {% if has_advanced and not is_basic %}style="display: none;"{% endif %}>
+      <label class="form-label" for="{{ field.key }}">{{ field.label }}{% if field.required %} <span style="color: var(--failed-text);">*</span>{% endif %}</label>
+      {% if field.type == "textarea" %}
+      <textarea id="{{ field.key }}" name="{{ field.key }}" {% if field.required %}required{% endif %} placeholder="{{ field.placeholder }}">{{ field.default or project.defaults.input_values.get(field.key, '') }}</textarea>
+      {% elif field.type == "checkbox" %}
+      <div class="flex">
+        <input type="checkbox" id="{{ field.key }}" name="{{ field.key }}" value="true" {% if field.default or project.defaults.input_values.get(field.key) %}checked{% endif %}>
+        <label for="{{ field.key }}" class="form-label" style="margin: 0;">{{ field.label }}</label>
+      </div>
+      {% elif field.type == "select" %}
+      <select id="{{ field.key }}" name="{{ field.key }}">
+        {% set sel = project.defaults.input_values.get(field.key, field.default) %}
+        {% for opt in field.options %}
+        <option value="{{ opt }}" {% if sel == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <input type="{{ field.type }}" id="{{ field.key }}" name="{{ field.key }}" {% if field.required %}required{% endif %} placeholder="{{ field.placeholder }}" value="{{ field.default or project.defaults.input_values.get(field.key, '') }}">
+      {% endif %}
+      {% if field.helper_text %}
+      <div class="form-hint">{{ field.helper_text }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    <div class="form-group">
+      <label class="form-label" for="_title">Название (для очереди)</label>
+      <input type="text" id="_title" name="_title" placeholder="Оставить пустым для авто-названия">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="_notes">Заметки</label>
+      <input type="text" id="_notes" name="_notes" placeholder="Опциональные заметки к элементу очереди">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="_publish_profile">Профиль публикации по умолчанию</label>
+      <select id="_publish_profile" name="_publish_profile">
+        <option value="">— не выбран —</option>
+        {% for p in profiles %}
+        {% if p.enabled %}
+        <option value="{{ p.profile_id }}" {% if project.defaults.publish_profile_id == p.profile_id %}selected{% endif %}>
+          {{ p.display_name }} ({{ p.platform.value }})
+        </option>
+        {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="flex gap-1 mt-1">
+      <button type="submit" class="btn btn-primary" onclick="document.getElementById('formAction').value='launch_now'">▶ Запустить сейчас</button>
+      <button type="submit" class="btn btn-outline" onclick="document.getElementById('formAction').value='add_to_queue'">+ В очередь</button>
+      <button type="submit" class="btn btn-ghost" onclick="document.getElementById('formAction').value='save_draft'" style="border: 1px dashed var(--border);">Черновик</button>
+    </div>
+  </form>
+</div>
+
+{% if basic and project.input_fields|length > basic|length %}
+<script>
+function toggleAdvancedMode() {
+  var els = document.querySelectorAll('.field-advanced');
+  var show = document.getElementById('modeToggle').checked;
+  els.forEach(function(el) { el.style.display = show ? '' : 'none'; });
+}
+</script>
+{% endif %}
+
+{# ═══════════════════════════════════════════════════════════════ #}
+{# BLOCK 3: SCHEDULES                                                #}
+{# ═══════════════════════════════════════════════════════════════ #}
+<div class="card">
+  <div class="flex" style="justify-content: space-between; align-items: center;">
+    <div class="card-title" style="margin-bottom: 0;">Расписания (очередь)</div>
+    <a href="/schedules/help" class="btn btn-sm btn-ghost" target="_blank">❓ Как работают расписания</a>
+  </div>
+  <div style="font-size: .78rem; color: var(--text-muted); margin-bottom: .65rem;">
+    Расписание запускает первый элемент из очереди проекта. Если очередь пуста — ничего не происходит.
+    <a href="/schedules/help" target="_blank">Подробнее</a>
+  </div>
+  <form action="/schedules/create" method="POST" class="card-section">
+    <input type="hidden" name="project_id" value="{{ project.project_id }}">
+    <div class="flex gap-1" style="align-items: flex-end; flex-wrap: wrap;">
+      <div class="form-group" style="flex: 1; min-width: 120px;">
+        <label class="form-label">Пресет</label>
+        <select id="cronPreset" onchange="updateCronFromPreset()">
+          <option value="">— выберите —</option>
+          <option value="daily">Каждый день в HH:MM</option>
+          <option value="weekdays">По будням в HH:MM</option>
+          <option value="weekly">Раз в неделю</option>
+          <option value="every_2h">Каждые 2 часа</option>
+          <option value="every_4h">Каждые 4 часа</option>
+          <option value="every_6h">Каждые 6 часов</option>
+          <option value="advanced">Свой cron (advanced)</option>
+        </select>
+      </div>
+      <div class="form-group" id="cronTimeGroup" style="display: none; min-width: 100px;">
+        <label class="form-label">Время (HH:MM)</label>
+        <input type="time" id="cronTime" value="08:00" onchange="updateCronFromPreset()">
+      </div>
+      <div class="form-group" id="cronDayGroup" style="display: none; min-width: 120px;">
+        <label class="form-label">День недели</label>
+        <select id="cronDay" onchange="updateCronFromPreset()">
+          <option value="1">Понедельник</option>
+          <option value="2">Вторник</option>
+          <option value="3">Среда</option>
+          <option value="4">Четверг</option>
+          <option value="5">Пятница</option>
+          <option value="6">Суббота</option>
+          <option value="0">Воскресенье</option>
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-1" style="align-items: flex-end;">
+      <div class="form-group" style="flex: 2;">
+        <label class="form-label" for="cron">Cron-выражение</label>
+        <input type="text" id="cron" name="cron_expression" placeholder="*/30 * * * *" required>
+        <div class="form-hint" id="cronHumanDesc">5-польный синтаксис cron. Или используйте пресет выше.</div>
+      </div>
+      <div class="form-group" style="flex: 1;">
+        <label class="form-label" for="sched-title">Название</label>
+        <input type="text" id="sched-title" name="title" placeholder="Каждые 30 минут">
+      </div>
+    </div>
+    <div class="flex gap-1">
+      <label class="flex">
+        <input type="checkbox" id="sched-enabled" name="enabled" checked>
+        <span class="form-label" style="margin: 0;">Активно</span>
+      </label>
+      <button type="submit" class="btn btn-outline">Добавить расписание</button>
+    </div>
+  </form>
+  {% if schedules %}
+  <div class="table-wrap">
+  <table>
+    <tr><th>Название</th><th>Cron</th><th>Описание</th><th>Статус</th><th>Последний запуск</th><th></th></tr>
+    {% for s in schedules %}
+    <tr>
+      <td style="font-size: .83rem;">{{ s.title or s.schedule_id[:12] }}</td>
+      <td class="mono">{{ s.cron_expression }}</td>
+      <td style="font-size: .78rem; color: var(--text-muted);" id="cronDesc_{{ loop.index }}"></td>
+      <td><span class="tag tag-{{ 'success' if s.enabled else 'pending' }}">{{ 'активно' if s.enabled else 'приостановлено' }}</span></td>
+      <td style="font-size: .78rem; color: var(--text-muted);">{{ s.last_run_at | moscow_time('%d.%m %H:%M') }}</td>
+      <td>
+        <form action="/schedules/{{ s.schedule_id }}/delete" method="POST" style="display:inline;">
+          <button class="btn btn-danger btn-sm">Удалить</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <div class="empty-state">Расписаний пока нет. Создайте расписание, и оно будет запускать первый элемент из очереди проекта.</div>
+  {% endif %}
+</div>
+
+<script>
+var cronDescriptions = {
+  'daily': 'Каждый день в {time}',
+  'weekdays': 'По будням (пн-пт) в {time}',
+  'weekly': 'Каждую {day} в {time}',
+  'every_2h': 'Каждые 2 часа',
+  'every_4h': 'Каждые 4 часа',
+  'every_6h': 'Каждые 6 часов',
+};
+var dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+
+function updateCronFromPreset() {
+  var preset = document.getElementById('cronPreset').value;
+  var timeVal = document.getElementById('cronTime').value || '08:00';
+  var dayVal = document.getElementById('cronDay').value;
+  var hour = timeVal.split(':')[0] || '8';
+  var min = timeVal.split(':')[1] || '0';
+  var descEl = document.getElementById('cronHumanDesc');
+  var timeGroup = document.getElementById('cronTimeGroup');
+  var dayGroup = document.getElementById('cronDayGroup');
+  timeGroup.style.display = 'none';
+  dayGroup.style.display = 'none';
+
+  if (preset === 'daily') {
+    document.getElementById('cron').value = min + ' ' + hour + ' * * *';
+    timeGroup.style.display = '';
+    descEl.textContent = cronDescriptions['daily'].replace('{time}', timeVal);
+  } else if (preset === 'weekdays') {
+    document.getElementById('cron').value = min + ' ' + hour + ' * * 1-5';
+    timeGroup.style.display = '';
+    descEl.textContent = cronDescriptions['weekdays'].replace('{time}', timeVal);
+  } else if (preset === 'weekly') {
+    document.getElementById('cron').value = min + ' ' + hour + ' * * ' + dayVal;
+    timeGroup.style.display = '';
+    dayGroup.style.display = '';
+    descEl.textContent = cronDescriptions['weekly'].replace('{time}', timeVal).replace('{day}', dayNames[parseInt(dayVal)]);
+  } else if (preset === 'every_2h') {
+    document.getElementById('cron').value = '0 */2 * * *';
+    descEl.textContent = 'Каждые 2 часа';
+  } else if (preset === 'every_4h') {
+    document.getElementById('cron').value = '0 */4 * * *';
+    descEl.textContent = 'Каждые 4 часа';
+  } else if (preset === 'every_6h') {
+    document.getElementById('cron').value = '0 */6 * * *';
+    descEl.textContent = 'Каждые 6 часов';
+  } else {
+    descEl.textContent = '5-польный синтаксис cron. Используйте пресеты для простых случаев.';
+  }
+}
+
+(function() {
+  var rows = document.querySelectorAll('[id^="cronDesc_"]');
+  rows.forEach(function(el) {
+    var idx = el.id.replace('cronDesc_', '');
+    var row = el.closest('tr');
+    if (row) {
+      var cronCell = row.querySelector('.mono');
+      if (cronCell) {
+        var expr = cronCell.textContent.trim();
+        if (expr.match(/^\d+ \d+ \* \* \*$/)) {
+          el.textContent = 'Каждый день в ' + expr.split(' ')[1] + ':' + expr.split(' ')[0];
+        } else if (expr.match(/^\d+ \d+ \* \* 1-5$/)) {
+          el.textContent = 'По будням в ' + expr.split(' ')[1] + ':' + expr.split(' ')[0];
+        } else if (expr.match(/^\d+ \*\/\d+ \* \* \*$/)) {
+          el.textContent = 'Каждые ' + expr.split(' ')[1].replace('*/', '') + ' часа';
+        } else {
+          el.textContent = expr;
+        }
+      }
+    }
+  });
+})();
+</script>
+
+{# ═══════════════════════════════════════════════════════════════ #}
+{# BLOCK 4: RECENT RUNS                                              #}
+{# ═══════════════════════════════════════════════════════════════ #}
 <div class="runs-section">
   <div class="runs-header">
     <h2>Последние запуски</h2>
@@ -40,7 +389,6 @@
     </div>
   </div>
 
-  {# Filters #}
   <div class="run-filters" id="runFilters">
     <button class="filter-btn active" data-filter="all">Все</button>
     <button class="filter-btn" data-filter="running">Активные</button>
@@ -48,12 +396,10 @@
     <button class="filter-btn" data-filter="failed">Ошибки</button>
   </div>
 
-  {# Search #}
   <div class="run-search">
     <input type="text" id="runSearch" placeholder="Поиск по ID, заголовку, входным данным…" oninput="filterRuns()">
   </div>
 
-  {# Merged runs list #}
   {% if merged_runs %}
   <div id="runsList">
     {% for r in merged_runs %}
@@ -108,8 +454,8 @@
         {% else %}—{% endif %}
         {% if r.finished_at and r.started_at %}
         {% if r.finished_at is not string and r.started_at is not string %}
-        · {% set dur = (r.finished_at - r.started_at).total_seconds() %}
-        {{ '%dм'|format(dur // 60) }}{{ '%dс'|format(dur % 60) }}
+        {% set dur = (r.finished_at - r.started_at).total_seconds() %}
+        · {{ '%dм'|format(dur // 60) }}{{ '%dс'|format(dur % 60) }}
         {% endif %}
         {% endif %}
       </div>
@@ -126,7 +472,7 @@
   </div>
   {% else %}
   <div class="card">
-    <div class="empty-state">Нет запусков. Заполните форму ниже и нажмите «Запустить», или синхронизируйтесь с сервером проекта.</div>
+    <div class="empty-state">Нет запусков. Заполните форму выше и нажмите «Запустить», или синхронизируйтесь с сервером проекта.</div>
   </div>
   {% endif %}
 </div>
@@ -136,7 +482,6 @@ function filterRuns() {
   var activeFilter = document.querySelector('.filter-btn.active');
   var filter = activeFilter ? activeFilter.dataset.filter : 'all';
   var query = (document.getElementById('runSearch').value || '').toLowerCase();
-
   document.querySelectorAll('.run-row').forEach(function(row) {
     var status = row.dataset.status;
     var search = (row.dataset.search || '').toLowerCase();
@@ -157,124 +502,14 @@ document.getElementById('runFilters').addEventListener('click', function(e) {
 });
 </script>
 
-{# ── SECONDARY SECTION: Manual run form (compact) ── #}
-<div class="card">
-  <div class="flex" style="justify-content: space-between; align-items: center;">
-    <div class="card-title" style="margin-bottom: 0;">Ручной запуск</div>
-    {% set basic = project.config.get('basic_fields', []) %}
-    {% if basic and project.input_fields|length > basic|length %}
-    <label class="flex" style="font-size: .78rem; color: var(--text-muted); cursor: pointer;">
-      <input type="checkbox" id="modeToggle" onchange="toggleAdvancedMode()" style="margin-right: .3rem;">
-      Расширенные
-    </label>
-    {% endif %}
-  </div>
-  <form action="/projects/{{ project.project_id }}/run" method="POST" style="margin-top: .75rem;">
-    {% for field in project.input_fields %}
-    {% set has_advanced = basic and project.input_fields|length > basic|length %}
-    {% set is_basic = not basic or field.key in basic %}
-    <div class="form-group field-group {% if has_advanced and not is_basic %}field-advanced{% endif %}" {% if has_advanced and not is_basic %}style="display: none;"{% endif %}>
-      <label class="form-label" for="{{ field.key }}">{{ field.label }}{% if field.required %} <span style="color: var(--failed-text);">*</span>{% endif %}</label>
-      {% if field.type == "textarea" %}
-      <textarea id="{{ field.key }}" name="{{ field.key }}" {% if field.required %}required{% endif %} placeholder="{{ field.placeholder }}">{{ field.default or '' }}</textarea>
-      {% elif field.type == "checkbox" %}
-      <div class="flex">
-        <input type="checkbox" id="{{ field.key }}" name="{{ field.key }}" value="true" {% if field.default %}checked{% endif %}>
-        <label for="{{ field.key }}" class="form-label" style="margin: 0;">{{ field.label }}</label>
-      </div>
-      {% elif field.type == "select" %}
-      <select id="{{ field.key }}" name="{{ field.key }}">
-        {% for opt in field.options %}
-        <option value="{{ opt }}" {% if field.default == opt %}selected{% endif %}>{{ opt }}</option>
-        {% endfor %}
-      </select>
-      {% else %}
-      <input type="{{ field.type }}" id="{{ field.key }}" name="{{ field.key }}" {% if field.required %}required{% endif %} placeholder="{{ field.placeholder }}" value="{{ field.default or '' }}">
-      {% endif %}
-    </div>
-    {% endfor %}
-    <button type="submit" class="btn btn-primary mt-1">▶ Запустить</button>
-  </form>
-</div>
-
-{% if basic and project.input_fields|length > basic|length %}
-<script>
-function toggleAdvancedMode() {
-  var els = document.querySelectorAll('.field-advanced');
-  var show = document.getElementById('modeToggle').checked;
-  els.forEach(function(el) { el.style.display = show ? '' : 'none'; });
-}
-</script>
-{% endif %}
-
-{# ── Schedules card ── #}
-<div class="card">
-  <div class="card-title">Расписание</div>
-  <form action="/schedules/create" method="POST" class="card-section">
-    <input type="hidden" name="project_id" value="{{ project.project_id }}">
-    <div class="form-group">
-      <label class="form-label" for="cron">Cron-выражение</label>
-      <input type="text" id="cron" name="cron_expression" placeholder="*/30 * * * *" required>
-      <div class="form-hint">Стандартный 5-польный синтаксис cron.</div>
-    </div>
-    <div class="form-group">
-      <label class="form-label" for="sched-title">Название</label>
-      <input type="text" id="sched-title" name="title" placeholder="Каждые 30 минут">
-    </div>
-    <div class="flex mb-1">
-      <input type="checkbox" id="sched-enabled" name="enabled" checked>
-      <label class="form-label" for="sched-enabled" style="margin: 0;">Активно</label>
-    </div>
-    <button type="submit" class="btn btn-outline">Добавить расписание</button>
-  </form>
-  {% if schedules %}
-  <div class="table-wrap">
-  <table>
-    <tr><th>Название</th><th>Cron</th><th>Статус</th><th></th></tr>
-    {% for s in schedules %}
-    <tr>
-      <td style="font-size: .83rem;">{{ s.title or s.schedule_id[:12] }}</td>
-      <td class="mono">{{ s.cron_expression }}</td>
-      <td><span class="tag tag-{{ 'success' if s.enabled else 'pending' }}">{{ 'активно' if s.enabled else 'приостановлено' }}</span></td>
-      <td>
-        <form action="/schedules/{{ s.schedule_id }}/delete" method="POST" style="display:inline;">
-          <button class="btn btn-danger btn-sm">Удалить</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
-  </div>
-  {% else %}
-  <div class="empty-state">Расписаний пока нет.</div>
-  {% endif %}
-</div>
-
-{# ── Jobs card ── #}
-<div class="card">
-  <div class="card-title">Задачи</div>
-  {% if jobs %}
-  {% for j in jobs %}
-  <div class="flex" style="justify-content: space-between; padding: .45rem 0; border-bottom: 1px solid var(--border);">
-    <div>
-      <div style="font-size: .87rem; font-weight: 500;">{{ j.title }}</div>
-      <div style="font-size: .75rem; color: var(--text-light);">
-        <span class="mono">{{ j.job_id }}</span>
-        {% if j.manual_run_allowed %} · ручной{% endif %}
-        {% if j.cron_allowed %} · cron{% endif %}
-      </div>
-    </div>
-    <span class="tag tag-{{ 'success' if j.enabled else 'pending' }}">{{ 'вкл' if j.enabled else 'выкл' }}</span>
-  </div>
-  {% endfor %}
-  {% else %}
-  <div class="empty-state">Задачи не настроены.</div>
-  {% endif %}
-</div>
-
-{# ── Publish bindings card ── #}
+{# ═══════════════════════════════════════════════════════════════ #}
+{# BLOCK 5: PUBLISH BINDINGS                                         #}
+{# ═══════════════════════════════════════════════════════════════ #}
 <div class="card">
   <div class="card-title">Публикация</div>
+  <div style="font-size: .78rem; color: var(--text-muted); margin-bottom: .5rem;">
+    Primary artifact для публикации: <span class="mono" style="font-size: .75rem;">{{ project.primary_artifact.artifact_key }}</span> — {{ project.primary_artifact.label }}
+  </div>
   {% if project.publish_bindings %}
   {% for binding in project.publish_bindings %}
   {% set p = profiles|selectattr('profile_id', 'equalto', binding.profile_id)|first %}
@@ -298,4 +533,44 @@ function toggleAdvancedMode() {
     <a href="/publish/profiles" class="btn btn-outline btn-sm">Управление профилями</a>
   </div>
 </div>
+
+{# ═══════════════════════════════════════════════════════════════ #}
+{# BLOCK 6: JOBS / CONFIG (lowest priority)                          #}
+{# ═══════════════════════════════════════════════════════════════ #}
+<details>
+  <summary style="font-size: .82rem; color: var(--text-muted); padding: .5rem 0;">Задачи и конфигурация проекта</summary>
+  <div class="card mt-1">
+    <div class="card-title">Задачи</div>
+    {% if jobs %}
+    {% for j in jobs %}
+    <div class="flex" style="justify-content: space-between; padding: .45rem 0; border-bottom: 1px solid var(--border);">
+      <div>
+        <div style="font-size: .87rem; font-weight: 500;">{{ j.title }}</div>
+        <div style="font-size: .75rem; color: var(--text-light);">
+          <span class="mono">{{ j.job_id }}</span>
+          {% if j.manual_run_allowed %} · ручной{% endif %}
+          {% if j.cron_allowed %} · cron{% endif %}
+        </div>
+      </div>
+      <span class="tag tag-{{ 'success' if j.enabled else 'pending' }}">{{ 'вкл' if j.enabled else 'выкл' }}</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">Задачи не настроены.</div>
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="card-title">Параметры проекта</div>
+    <div class="info-grid">
+      <span class="label">Primary artifact key</span>
+      <span class="mono" style="font-size: .83rem;">{{ project.primary_artifact.artifact_key }}</span>
+      <span class="label">Primary artifact label</span>
+      <span>{{ project.primary_artifact.label }}</span>
+      <span class="label">Default publish profile</span>
+      <span>{{ project.defaults.publish_profile_id or '—' }}</span>
+      <span class="label">Default input values</span>
+      <span><pre class="json" style="margin: 0;">{{ project.defaults.input_values | tojson_unicode }}</pre></span>
+    </div>
+  </div>
+</details>
 {% endblock %}

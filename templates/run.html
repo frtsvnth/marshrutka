@@ -5,16 +5,19 @@
 {% set orch = run.orchestration_status.value %}
 {% set remote_s = run.remote_status.value %}
 
-<div class="breadcrumb"><a href="/">Проекты</a> / <a href="/projects/{{ run.project_id }}">{{ project.display_name if project else run.project_id }}</a> / Запуск</div>
+<div class="breadcrumb"><a href="/">Дашборд</a> / <a href="/projects/{{ run.project_id }}">{{ project.display_name if project else run.project_id }}</a> / Запуск</div>
 
 <div class="page-header">
   <div class="flex gap-2" style="justify-content: space-between; align-items: center;">
     <div>
       <h1 style="font-size: 1.1rem;">Запуск Marshrutka</h1>
-      <div class="flex gap-2 mt-1" style="font-size: .8rem; color: var(--text-muted);">
+      <div class="flex gap-2 mt-1" style="font-size: .8rem; color: var(--text-muted); flex-wrap: wrap;">
         <span class="mono">{{ run.run_id }}</span>
         {% if run.remote_job_id %}
         <span>→ Job сервера: <span class="mono">{{ run.remote_job_id }}</span></span>
+        {% endif %}
+        {% if run.queue_item_id %}
+        <span>→ Item очереди: <span class="mono">{{ run.queue_item_id[:16] }}</span></span>
         {% endif %}
       </div>
     </div>
@@ -26,7 +29,7 @@
   </div>
 </div>
 
-{# ── Status overview: two status lines ── #}
+{# ── Status overview ── #}
 <div class="card">
   <div class="card-title">Состояние запуска</div>
   <div class="info-grid">
@@ -63,42 +66,32 @@
     <span class="label">Запуск Marshrutka</span>
     <span class="mono" style="font-size: .82rem; color: var(--text-muted);">{{ run.run_id }}</span>
 
+    {% if run.queue_item_id %}
+    <span class="label">Item очереди</span>
+    <span class="mono" style="font-size: .82rem; color: var(--text-muted);">{{ run.queue_item_id }}</span>
+    {% endif %}
+
     <span class="label">Создан</span>
     <span>{{ run.created_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
- 
-     {% if run.submitted_at %}
-     <span class="label">Отправлен на сервер</span>
-     <span>{{ run.submitted_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
-     {% endif %}
- 
-     {% if run.last_sync_at %}
-     <span class="label">Последняя синхронизация</span>
-     <span>{{ run.last_sync_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
-     {% endif %}
- 
-     {% if remote_details and remote_details.started_at is not none %}
-     <span class="label">Старт на сервере</span>
-     <span>{{ remote_details.started_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
-     {% endif %}
- 
-     {% if remote_details and remote_details.finished_at is not none %}
-     <span class="label">Завершён на сервере</span>
-     <span>{{ remote_details.finished_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
-     {% endif %}
+
+    {% if run.submitted_at %}
+    <span class="label">Отправлен на сервер</span>
+    <span>{{ run.submitted_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
+    {% endif %}
 
     {% if run.last_sync_at %}
     <span class="label">Последняя синхронизация</span>
-    <span>{{ run.last_sync_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+    <span>{{ run.last_sync_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
     {% endif %}
 
     {% if remote_details and remote_details.started_at is not none %}
     <span class="label">Старт на сервере</span>
-    <span>{{ remote_details.started_at.strftime('%Y-%m-%d %H:%M:%S') if remote_details.started_at is not string else remote_details.started_at }}</span>
+    <span>{{ remote_details.started_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
     {% endif %}
 
     {% if remote_details and remote_details.finished_at is not none %}
     <span class="label">Завершён на сервере</span>
-    <span>{{ remote_details.finished_at.strftime('%Y-%m-%d %H:%M:%S') if remote_details.finished_at is not string else remote_details.finished_at }}</span>
+    <span>{{ remote_details.finished_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
     {% endif %}
   </div>
 </div>
@@ -165,17 +158,28 @@
   </div>
   {% endif %}
 
-  {# Artifacts #}
+  {# Artifacts with primary artifact highlighted #}
   {% if normalized_artifacts %}
   <div class="card-section">
-    <div style="font-size: .82rem; font-weight: 600; margin-bottom: .5rem;">Артефакты ({{ normalized_artifacts|length }})</div>
+    <div style="font-size: .82rem; font-weight: 600; margin-bottom: .5rem;">
+      Артефакты ({{ normalized_artifacts|length }})
+      {% if primary_artifact %}
+      <span style="font-weight: 400; color: var(--success-text); margin-left: .5rem;">
+        · Primary: <span class="mono">{{ primary_artifact.key }}</span>
+      </span>
+      {% endif %}
+    </div>
     <div style="display: flex; flex-direction: column; gap: .25rem;">
     {% for art in normalized_artifacts %}
-      <div style="display: flex; align-items: center; padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);">
+      {% set is_primary = art.is_primary %}
+      <div style="display: flex; align-items: center; padding: .4rem .5rem; border: 1px solid {{ 'var(--success-bg)' if is_primary else 'var(--border)' }}; border-radius: 10px; background: {{ '#f0fdf4' if is_primary else 'var(--surface)' }};">
         <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: .5rem;">
           <span style="font-size: .85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ art.filename }}</span>
           <span class="tag tag-pending" style="font-size: .65rem; background: #f3f4f6; color: #6b7280; flex-shrink: 0;">{{ art.extension or '?' }}</span>
           <span style="font-size: .72rem; color: var(--text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; max-width: 140px;" title="key: {{ art.key }}">{{ art.key }}</span>
+          {% if is_primary %}
+          <span class="tag tag-sm tag-success" style="font-size: .65rem;">★ Primary</span>
+          {% endif %}
         </div>
         <div style="flex-shrink: 0; display: flex; gap: .3rem;">
           {% if art.previewable %}
@@ -233,31 +237,27 @@
 </div>
 
 {% elif run.remote_job_id %}
-{# Remote job exists but details not fetched yet #}
 <div class="card" style="border-color: var(--amber-light);">
   <div class="card-title" style="color: var(--cancelled-text);">
     Детали с сервера проекта временно недоступны
   </div>
   <p style="font-size: .82rem; color: var(--text-muted);">
     Remote job ID <span class="mono">{{ run.remote_job_id }}</span> существует, но получить детали не удалось.
-    Причины: сервер проекта может быть недоступен, job мог быть удалён, или требуется повторная синхронизация.
   </p>
   <div class="mt-1">
     <a href="/projects/{{ run.project_id }}" class="btn btn-outline btn-sm">⟳ Вернуться к проекту и обновить</a>
   </div>
 </div>
 {% else %}
-{# No remote job yet #}
 <div class="card" style="border-color: var(--amber-light);">
   <div class="card-title" style="color: var(--cancelled-text);">Ожидание подтверждения от сервера</div>
   <p style="font-size: .82rem; color: var(--text-muted);">
     Запуск отправлен на сервер проекта, но remote job ID ещё не получен.
-    Статус может обновиться после синхронизации со стороны проекта.
   </p>
 </div>
 {% endif %}
 
-{# ── Submit response (diagnostic) ── #}
+{# ── Submit response ── #}
 {% if run.submit_response %}
 <div class="card">
   <div class="card-title">Ответ сервера на запрос запуска</div>
@@ -265,10 +265,25 @@
 </div>
 {% endif %}
 
-{# ── Publish section (for successful runs) ── #}
+{# ── Publish section ── #}
 {% if run.remote_status.value == 'success' and profiles %}
 <div class="card" style="border-color: var(--success-bg);">
   <div class="card-title" style="color: var(--success-text);">📤 Публикация</div>
+
+  {% if primary_artifact %}
+  <div style="font-size: .82rem; color: var(--success-text); background: var(--success-bg); padding: .4rem .7rem; border-radius: 8px; margin-bottom: .65rem;">
+    Primary artifact для публикации: <span class="mono">{{ primary_artifact.filename }}</span>
+    (ключ: <span class="mono">{{ primary_artifact.key }}</span>)
+    {% if primary_artifact.fallback %}
+    <span style="color: var(--cancelled-text);">· fallback (единственное видео)</span>
+    {% endif %}
+  </div>
+  {% else %}
+  <div style="font-size: .82rem; color: var(--cancelled-text); background: var(--amber-light); padding: .4rem .7rem; border-radius: 8px; margin-bottom: .65rem;">
+    Primary artifact не определён. Укажите <span class="mono">primary_artifact_key</span> в настройках проекта.
+  </div>
+  {% endif %}
+
   {% if publish_reqs %}
   <div class="mb-1">
     <div style="font-size: .82rem; font-weight: 500; margin-bottom: .4rem;">Запросы на публикацию</div>
@@ -295,6 +310,9 @@
     <form action="/publish/request" method="POST" style="margin-top: .65rem;">
       <input type="hidden" name="run_id" value="{{ run.run_id }}">
       <input type="hidden" name="project_id" value="{{ run.project_id }}">
+      {% if primary_artifact %}
+      <input type="hidden" name="artifact_key" value="{{ primary_artifact.key }}">
+      {% endif %}
       <div class="form-group">
         <label class="form-label" for="pub_profile">Профиль публикации</label>
         <select id="pub_profile" name="profile_id" required>
@@ -307,6 +325,9 @@
           {% endif %}
           {% endfor %}
         </select>
+        {% if primary_artifact %}
+        <div class="form-hint">Будет опубликован: <span class="mono">{{ primary_artifact.filename }}</span></div>
+        {% endif %}
       </div>
       <input type="hidden" name="platform" value="" id="pubPlatform">
       <div class="form-group">

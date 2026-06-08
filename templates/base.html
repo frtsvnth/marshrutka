@@ -363,7 +363,10 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
     <div class="subtitle" style="margin-top: .35rem;">content workflow runner</div>
   </div>
   <nav>
-    <a href="/" class="{% if request.url.path == '/' or request.url.path.startswith('/projects') %}active{% endif %}">
+    <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">
+      <span class="nav-icon">◈</span><span class="nav-label">Дашборд</span>
+    </a>
+    <a href="/projects" class="{% if request.url.path.startswith('/projects') %}active{% endif %}">
       <span class="nav-icon">⊞</span><span class="nav-label">Проекты</span>
     </a>
     <a href="/schedules" class="{% if request.url.path == '/schedules' %}active{% endif %}">

@@ -2,11 +2,11 @@
 {% block title %}Редактировать {{ project.display_name }}{% endblock %}
 {% block content %}
 
-<div class="breadcrumb"><a href="/">Проекты</a> / <a href="/projects/{{ project.project_id }}">{{ project.display_name }}</a> / Редактировать</div>
+<div class="breadcrumb"><a href="/">Дашборд</a> / <a href="/projects/{{ project.project_id }}">{{ project.display_name }}</a> / Редактировать</div>
 
 <div class="page-header">
   <h1>Редактировать проект</h1>
-  <div class="description">Настройте параметры интеграции, поля ввода, задачи и профили публикации.</div>
+  <div class="description">Настройте параметры интеграции, поля ввода, primary artifact, defaults и профили публикации.</div>
 </div>
 
 <form action="/projects/{{ project.project_id }}/edit" method="POST">
@@ -30,6 +30,24 @@
         <input type="checkbox" name="enabled" {% if project.enabled %}checked{% endif %}>
         Проект активен
       </label>
+    </div>
+  </div>
+
+  {# ── Primary Artifact ── #}
+  <div class="card">
+    <div class="card-title">Primary / Final Artifact</div>
+    <div class="form-hint" style="margin-bottom: .65rem;">
+      Главный артефакт проекта, который считается основным deliverable для публикации.
+    </div>
+    <div class="flex gap-1">
+      <div class="form-group" style="flex: 1;">
+        <label class="form-label" for="primary_artifact_key">Artifact key</label>
+        <input type="text" id="primary_artifact_key" name="primary_artifact_key" value="{{ project.primary_artifact.artifact_key }}" placeholder="final_video">
+      </div>
+      <div class="form-group" style="flex: 1;">
+        <label class="form-label" for="primary_artifact_label">Название</label>
+        <input type="text" id="primary_artifact_label" name="primary_artifact_label" value="{{ project.primary_artifact.label }}" placeholder="Финальное видео">
+      </div>
     </div>
   </div>
 
@@ -75,9 +93,12 @@
   {# ── Input fields ── #}
   <div class="card">
     <div class="card-title">Поля ввода</div>
+    <div class="form-hint" style="margin-bottom: .65rem;">
+      Поля нельзя удалять после создания — вместо удаления используйте «Скрыть» или «Deprecated».
+    </div>
     <div id="fieldsContainer">
       {% for f in project.input_fields %}
-      <div class="field-row" style="border: 1px solid var(--border); border-radius: 12px; padding: .75rem; margin-bottom: .5rem;">
+      <div class="field-row" style="border: 1px solid var(--border); border-radius: 12px; padding: .75rem; margin-bottom: .5rem; {% if f.deprecated %}opacity: 0.5;{% endif %}">
         <div class="flex gap-1" style="align-items: flex-end;">
           <div class="form-group" style="flex: 1;">
             <label class="form-label">Ключ</label>
@@ -112,14 +133,30 @@
             <input type="text" name="field_options_{{ loop.index0 }}" value="{{ f.options | join(', ') }}">
           </div>
         </div>
+        <div class="form-group">
+          <label class="form-label">Helper text</label>
+          <input type="text" name="field_helper_{{ loop.index0 }}" value="{{ f.helper_text }}" placeholder="Подсказка под полем">
+        </div>
         <div class="flex gap-2">
           <label><input type="checkbox" name="field_req_{{ loop.index0 }}" {% if f.required %}checked{% endif %}> обязательное</label>
+          <label><input type="checkbox" name="field_visible_{{ loop.index0 }}" {% if f.visible %}checked{% endif %}> видимое в форме</label>
+          <label><input type="checkbox" name="field_supports_default_{{ loop.index0 }}" {% if f.supports_default %}checked{% endif %}> поддержка default</label>
         </div>
       </div>
       {% endfor %}
     </div>
     <input type="hidden" name="field_count" value="{{ project.input_fields|length }}" id="fieldCount">
     <button type="button" class="btn btn-outline btn-sm" onclick="addField()">+ Добавить поле</button>
+  </div>
+
+  {# ── Defaults ── #}
+  <div class="card">
+    <div class="card-title">Defaults проекта</div>
+    <div class="form-group">
+      <label class="form-label" for="defaults_input_json">Default input values (JSON)</label>
+      <textarea id="defaults_input_json" name="defaults_input_json" style="min-height: 80px; font-family: monospace; font-size: .8rem;">{{ project.defaults.input_values | tojson_unicode }}</textarea>
+      <div class="form-hint">JSON-объект с значениями по умолчанию для полей ввода. Например: {"news_text": "текст по умолчанию"}</div>
+    </div>
   </div>
 
   {# ── Publishing profiles binding ── #}
@@ -194,7 +231,10 @@ function addField() {
     '<div class="flex gap-1"><div class="form-group" style="flex: 1;"><label class="form-label">Placeholder</label><input type="text" name="field_placeholder_' + idx + '"></div>' +
     '<div class="form-group" style="flex: 1;"><label class="form-label">Значение по умолч.</label><input type="text" name="field_default_' + idx + '"></div>' +
     '<div class="form-group" style="flex: 1;"><label class="form-label">Опции</label><input type="text" name="field_options_' + idx + '"></div></div>' +
+    '<div class="form-group"><label class="form-label">Helper text</label><input type="text" name="field_helper_' + idx + '" placeholder="Подсказка под полем"></div>' +
     '<label><input type="checkbox" name="field_req_' + idx + '"> обязательное</label>' +
+    '<label><input type="checkbox" name="field_visible_' + idx + '" checked> видимое в форме</label>' +
+    '<label><input type="checkbox" name="field_supports_default_' + idx + '" checked> поддержка default</label>' +
     '</div>';
   container.insertAdjacentHTML('beforeend', html);
   document.getElementById('fieldCount').value = count + 1;

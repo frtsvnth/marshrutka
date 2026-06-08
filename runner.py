@@ -31,7 +31,7 @@ async def submit_remote_job(
     return await http_post(url, payload)
 
 
-async def run_project(project_id: str, input_data: dict[str, Any]) -> Run:
+async def run_project(project_id: str, input_data: dict[str, Any], queue_item_id: str | None = None) -> Run:
     project = get_project(project_id)
     if not project:
         raise ValueError(f"Project not found: {project_id}")
@@ -42,6 +42,7 @@ async def run_project(project_id: str, input_data: dict[str, Any]) -> Run:
         remote_status=RemoteExecutionStatus.unknown,
         input=input_data,
         submitted_at=datetime.utcnow(),
+        queue_item_id=queue_item_id,
     )
     runs_store.save(run)
 

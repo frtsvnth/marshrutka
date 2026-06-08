@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Как работают расписания{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Как работают расписания в Marshrutka</h1>
+  <div class="description">Queue-driven scheduling: расписания запускают не жёсткий payload, а первый элемент из очереди проекта.</div>
+</div>
+
+<div class="card">
+  <div class="card-title">Что такое расписание в Marshrutka?</div>
+  <p style="font-size: .84rem; color: var(--text-muted); line-height: 1.7;">
+    Расписание (schedule) &mdash; это cron-правило, которое автоматически запускает контентный pipeline.
+    В отличие от традиционных систем, где расписание привязано к фиксированному набору входных данных,
+    в Marshrutka расписание работает через <strong>очередь проекта</strong>.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-title">Как это работает</div>
+  <div class="guide-step">
+    <span class="guide-step-num">1</span>
+    <div class="guide-step-content">Создайте элементы в очереди проекта со статусом <strong>«В очереди»</strong>.</div>
+  </div>
+  <div class="guide-step">
+    <span class="guide-step-num">2</span>
+    <div class="guide-step-content">Создайте расписание для этого проекта и укажите cron-выражение.</div>
+  </div>
+  <div class="guide-step">
+    <span class="guide-step-num">3</span>
+    <div class="guide-step-content">При каждом срабатывании расписания Marshrutka берёт <strong>первый элемент</strong> из очереди со статусом «В очереди», сортируя по позиции.</div>
+  </div>
+  <div class="guide-step">
+    <span class="guide-step-num">4</span>
+    <div class="guide-step-content">Элемент запускается: создаётся локальный Run, отправляется remote job, элемент помечается как «Запущен».</div>
+  </div>
+  <div class="guide-step">
+    <span class="guide-step-num">5</span>
+    <div class="guide-step-content">В элемент очереди записываются <code>last_run_id</code>, <code>last_remote_job_id</code> и <code>last_launch_at</code>.</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Что происходит, если очередь пуста?</div>
+  <p style="font-size: .84rem; color: var(--text-muted); line-height: 1.7;">
+    Если в очереди проекта нет элементов со статусом «В очереди», расписание срабатывает,
+    но ничего не запускается. В логах Marshrutka появляется запись <code>[scheduler] queue is empty, no-op</code>.
+    Расписание остаётся здоровым (healthy) и продолжит срабатывать по cron.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-title">Что происходит, если первый элемент очереди невалиден?</div>
+  <p style="font-size: .84rem; color: var(--text-muted); line-height: 1.7;">
+    Если у первого элемента очереди пустой payload, он переводится в статус <strong>«Ошибка»</strong>
+    с сообщением <code>Empty payload — cannot launch</code>. Расписание НЕ пытается запустить следующий элемент
+    в той же итерации.
+  </p>
+  <p style="font-size: .84rem; color: var(--text-muted); line-height: 1.7; margin-top: .5rem;">
+    Если remote API возвращает ошибку или сервер проекта недоступен, элемент также переводится в «Ошибка»
+    с текстом ошибки. Исправьте элемент вручную или удалите его, чтобы расписание перешло к следующему.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-title">Статусы элементов очереди</div>
+  <div style="display: grid; grid-template-columns: 100px 1fr; gap: .4rem 1rem; font-size: .83rem;">
+    <span class="tag tag-pending">Черновик</span>
+    <span style="color: var(--text-muted);">Не готов к запуску. Не участвует в обработке расписанием.</span>
+    <span class="tag tag-pending" style="background: #dbeafe; color: #1e40af;">В очереди</span>
+    <span style="color: var(--text-muted);">Готов к запуску. Расписание берёт первый такой элемент.</span>
+    <span class="tag tag-running">Запускается</span>
+    <span style="color: var(--text-muted);">Идёт отправка на сервер проекта.</span>
+    <span class="tag tag-success">Запущен</span>
+    <span style="color: var(--text-muted);">Успешно отправлен на сервер. Есть run_id и remote_job_id.</span>
+    <span class="tag tag-failed">Ошибка</span>
+    <span style="color: var(--text-muted);">Ошибка при запуске. Проверьте last_error.</span>
+    <span class="tag tag-cancelled">Приостановлен</span>
+    <span style="color: var(--text-muted);">Временно исключён из очереди. Можно вернуть обратно.</span>
+    <span class="tag tag-pending" style="background: #f3f4f6; color: #6b7280;">Архив</span>
+    <span style="color: var(--text-muted);">Завершённый или ненужный элемент. Не участвует в обработке.</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Как проверить, что расписание активно?</div>
+  <ol style="font-size: .84rem; color: var(--text-muted); line-height: 1.8; padding-left: 1.25rem;">
+    <li>Откройте страницу проекта. В блоке «Расписания» статус должен быть <span class="tag tag-sm tag-success">активно</span>.</li>
+    <li>Убедитесь, что в очереди есть элементы со статусом «В очереди».</li>
+    <li>Проверьте, что проект активен (не отключён).</li>
+    <li>На странице <a href="/schedules">Расписания</a> виден список всех расписаний с последним запуском.</li>
+  </ol>
+</div>
+
+<div class="card">
+  <div class="card-title">Как безопасно тестировать расписание?</div>
+  <ol style="font-size: .84rem; color: var(--text-muted); line-height: 1.8; padding-left: 1.25rem;">
+    <li>Создайте элемент очереди со статусом «Черновик» — он не будет запущен расписанием.</li>
+    <li>Переведите элемент в «В очереди» и нажмите «Запустить» вручную — это имитирует срабатывание расписания.</li>
+    <li>Проверьте результат на странице run details.</li>
+    <li>Только после успешного ручного теста включайте cron.</li>
+    <li>Начните с редкого интервала (например, раз в день), чтобы избежать неожиданных запусков.</li>
+  </ol>
+</div>
+
+<div class="card">
+  <div class="card-title">Быстрые пресеты cron</div>
+  <div style="display: grid; grid-template-columns: 180px 1fr; gap: .4rem 1rem; font-size: .83rem;">
+    <span class="mono">0 8 * * *</span>
+    <span style="color: var(--text-muted);">Каждый день в 08:00</span>
+    <span class="mono">0 8 * * 1-5</span>
+    <span style="color: var(--text-muted);">По будням в 08:00</span>
+    <span class="mono">0 8 * * 1</span>
+    <span style="color: var(--text-muted);">Каждый понедельник в 08:00</span>
+    <span class="mono">0 */2 * * *</span>
+    <span style="color: var(--text-muted);">Каждые 2 часа</span>
+    <span class="mono">0 */4 * * *</span>
+    <span style="color: var(--text-muted);">Каждые 4 часа</span>
+    <span class="mono">0 */6 * * *</span>
+    <span style="color: var(--text-muted);">Каждые 6 часов</span>
+  </div>
+</div>
+
+<div class="flex gap-1">
+  <a href="/schedules" class="btn btn-outline">← К расписаниям</a>
+</div>
+{% endblock %}
