@@ -151,6 +151,37 @@
   flex-shrink: 0;
 }
 
+/* ── Suggestion buttons ── */
+.ai-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.3rem 0 0.1rem 0.3rem;
+}
+.ai-suggestion-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 100px;
+  padding: 0.22rem 0.6rem;
+  font-size: 0.71rem;
+  color: rgba(255,255,255,0.6);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+  line-height: 1.4;
+  font-family: inherit;
+}
+.ai-suggestion-btn:hover {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border-color: rgba(255,255,255,0.22);
+}
+.ai-suggestion-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* ── Quick chips ── */
 .ai-chips {
   display: flex;

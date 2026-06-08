@@ -15,6 +15,7 @@ from agent.operator_tools import (
     suggest_schedules,
     create_followup_task,
     list_auto_tasks,
+    delete_runs,
 )
 
 from registry import load_projects
@@ -161,6 +162,7 @@ TOOLS: dict[str, callable] = {
     "suggest_schedules": suggest_schedules,
     "create_followup_task": create_followup_task,
     "list_auto_tasks": list_auto_tasks,
+    "delete_runs": delete_runs,
 }
 
 TOOL_DEFINITIONS: list[ToolDefinition] = [
@@ -463,6 +465,31 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                     "type": "string",
                     "description": "Фильтр по статусу (pending, completed, cancelled)",
                 }
+            },
+        },
+    ),
+    ToolDefinition(
+        name="delete_runs",
+        description="Удалить запуски по фильтрам. Сначала вызови без confirm=True для предпросмотра, после подтверждения пользователя — с confirm=True.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "ID проекта для фильтрации (опционально)",
+                },
+                "statuses": {
+                    "type": "string",
+                    "description": "Статусы через запятую: sync_error, draft, linked, sync_pending, detached, cancelled_locally (опционально)",
+                },
+                "ids": {
+                    "type": "string",
+                    "description": "ID запусков через запятую (опционально)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Подтверждение удаления. Сначала вызови без confirm, покажи preview пользователю, потом с confirm=True",
+                },
             },
         },
     ),

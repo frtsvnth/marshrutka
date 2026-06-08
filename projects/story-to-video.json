@@ -9,21 +9,39 @@
       "label": "Текст новости",
       "type": "textarea",
       "required": true,
-      "placeholder": "Вставьте текст новости..."
+      "default": null,
+      "placeholder": "Вставьте текст новости...",
+      "options": [],
+      "helper_text": "",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
     },
     {
       "key": "queries",
       "label": "Поисковые запросы (через запятую, опционально)",
       "type": "text",
       "required": false,
-      "placeholder": "Поисковые запросы для подбора медиа"
+      "default": null,
+      "placeholder": "Поисковые запросы для подбора медиа",
+      "options": [],
+      "helper_text": "",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
     },
     {
       "key": "publish_to_telegram",
       "label": "Опубликовать в Telegram",
       "type": "checkbox",
       "required": false,
-      "default": false
+      "default": null,
+      "placeholder": "",
+      "options": [],
+      "helper_text": "",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
     }
   ],
   "jobs": [
@@ -48,9 +66,11 @@
     "integration_type": "api",
     "jobs_list_endpoint": "/jobs",
     "job_detail_endpoint": "/jobs/{job_id}",
-    "artifacts_endpoint": "/jobs/{job_id}/artifacts/{key}",
     "job_cancel_endpoint": "/jobs/{job_id}/cancel",
-    "auto_sync": true
+    "artifacts_endpoint": "/jobs/{job_id}/artifacts/{key}",
+    "auto_sync": true,
+    "last_sync_at": null,
+    "sync_status": "never"
   },
   "publish_bindings": [],
   "config": {

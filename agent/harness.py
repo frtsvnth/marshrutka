@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 import httpx
 
@@ -94,6 +94,48 @@ async def call_llm_stream(messages: list[dict]) -> AsyncGenerator[str, None]:
                         pass
 
 
+async def generate_suggestions(
+    messages: list[dict],
+    final_content: str,
+    max_suggestions: int = 4,
+) -> list[str]:
+    context_parts = []
+    for m in messages[-8:]:
+        role = m.get("role", "")
+        content = m.get("content", "")
+        if role in ("user", "assistant") and content:
+            context_parts.append(f"{role}: {content}")
+
+    prompt = (
+        "Based on the conversation below, determine if the assistant asked a question "
+        "or offered the user multiple choices. If so, generate 1-4 quick reply suggestions "
+        "the user might want to use.\n\n"
+        "Rules:\n"
+        f"- Return ONLY a JSON array of strings, max {max_suggestions} items\n"
+        "- If the assistant didn't ask a question or offer choices, return []\n"
+        "- Each suggestion must be short and read like a real user response\n"
+        "- Suggestions must be meaningfully different\n\n"
+        "Conversation:\n" + "\n".join(context_parts) +
+        "\n\nReturn ONLY a valid JSON array."
+    )
+
+    try:
+        msg = await call_llm(
+            [{"role": "user", "content": prompt}],
+            tools=None,
+            max_tokens=300,
+        )
+        raw = msg.get("content", "").strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        suggestions = json.loads(raw)
+        if isinstance(suggestions, list) and all(isinstance(s, str) for s in suggestions):
+            return suggestions[:max_suggestions]
+    except Exception:
+        logger.debug("Suggestion generation failed", exc_info=True)
+    return []
+
+
 async def run_harness(
     user_message: str,
     memory_manager: MemoryManager,
@@ -154,10 +196,25 @@ async def run_harness(
             messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result_str})
     else:
         if not final_content:
-            final_content = "(агент не смог сформировать ответ)"
+            simplified_msg = await call_llm(
+                [
+                    {"role": "system", "content": "Ты — Маршал, AI-ассистент Marshrutka. Ответь пользователю на его запрос коротко и по делу. Не используй инструменты."},
+                    {"role": "user", "content": user_message},
+                ],
+                tools=None,
+                max_tokens=1024,
+            )
+            fallback_content = (simplified_msg.get("content") or "").strip()
+            final_content = fallback_content if fallback_content else "(агент не смог сформировать ответ)"
 
-    if final_content:
-        yield SSEEvent(type="message_done", data={"content": final_content})
+    suggestions = []
+    if final_content and final_content != "(агент не смог сформировать ответ)":
+        suggestions = await generate_suggestions(messages, final_content)
+
+    event_data: dict[str, Any] = {"content": final_content}
+    if suggestions:
+        event_data["suggestions"] = suggestions
+    yield SSEEvent(type="message_done", data=event_data)
 
     session_memory.add_message("user", user_message)
     session_memory.add_message("assistant", final_content)
@@ -206,4 +263,6 @@ def _summarize_result(result: dict) -> str:
         return f"конфиг {result.get('key', '')} обновлён"
     if "entries" in result:
         return f"список файлов/директорий"
+    if "deleted_count" in result:
+        return f"удалено {result['deleted_count']} запусков"
     return "выполнено"

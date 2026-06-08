@@ -5,7 +5,7 @@
   <div class="flex" style="justify-content: space-between; align-items: center;">
     <div>
       <h1>Проекты</h1>
-      <div class="description">Контентные маршруты, доступные для запуска. У каждого проекта — своя форма ввода, цепочка задач и настройки публикации.</div>
+      <div class="description">Реестр проектов: настройки, параметры, primary artifact, дефолты. Оперативная сводка — на <a href="/">дашборде</a>.</div>
     </div>
     <a href="/projects/new" class="btn btn-primary">+ Добавить проект</a>
   </div>
@@ -17,27 +17,66 @@
 </div>
 {% endif %}
 
+<div style="display: flex; flex-direction: column; gap: .65rem;">
 {% for p in projects %}
-<div class="card">
+{% set qs = queue_summaries.get(p.project_id, {}) %}
+{% set p_schedules = all_schedules_by_project.get(p.project_id, []) %}
+{% set active_scheds = p_schedules | selectattr('enabled', 'equalto', true) | list %}
+<div class="card" style="padding: 1rem 1.25rem;">
   <div class="flex" style="justify-content: space-between; align-items: flex-start;">
     <div>
-      <a href="/projects/{{ p.project_id }}" style="font-size: 1rem; font-weight: 600; color: var(--text);">{{ p.display_name }}</a>
-      <p style="color: var(--text-muted); font-size: .82rem; margin-top: .15rem; max-width: 480px;">{{ p.description[:260] }}{% if p.description|length > 260 %}…{% endif %}</p>
+      <div class="flex gap-2" style="align-items: center; flex-wrap: wrap;">
+        <a href="/projects/{{ p.project_id }}" style="font-size: .95rem; font-weight: 600; color: var(--text);">{{ p.display_name }}</a>
+        <span class="tag tag-{{ 'success' if p.enabled else 'pending' }}" style="font-size: .65rem;">{{ 'активен' if p.enabled else 'отключён' }}</span>
+      </div>
+      <div class="flex gap-2 mt-1" style="font-size: .75rem; color: var(--text-muted); flex-wrap: wrap;">
+        <span>{{ p.input_fields | selectattr('visible', 'equalto', true) | list | length }} полей в форме</span>
+        {% if p.integration.api_url %}
+        <span class="mono" style="font-size: .72rem;">{{ p.integration.api_url }}</span>
+        {% endif %}
+        <span>Primary: <span class="mono" style="font-size: .72rem;">{{ p.primary_artifact.artifact_key }}</span></span>
+      </div>
     </div>
-    <span class="tag tag-{{ 'success' if p.enabled else 'pending' }}">{{ 'активен' if p.enabled else 'отключён' }}</span>
+    <div class="flex gap-1">
+      <a href="/projects/{{ p.project_id }}" class="btn btn-sm btn-outline">Открыть</a>
+      <a href="/projects/{{ p.project_id }}/edit" class="btn btn-sm btn-ghost">✎</a>
+    </div>
   </div>
-  <div class="project-meta">
-    <span>{{ p.jobs|length }} {{ 'задача' if p.jobs|length == 1 else 'задачи' if p.jobs|length < 5 else 'задач' }}</span>
-    <span>{{ p.input_fields|length }} {{ 'поле' if p.input_fields|length == 1 else 'поля' if p.input_fields|length < 5 else 'полей' }}</span>
-    {% if p.integration.api_url %}
-    <span class="mono" style="font-size: .75rem;">{{ p.integration.api_url }}</span>
-    {% endif %}
-    {% if p.publish_bindings %}
-    <span>публикация: {{ p.publish_bindings|length }} {{ 'профиль' if p.publish_bindings|length == 1 else 'профиля' if p.publish_bindings|length < 5 else 'профилей' }}</span>
-    {% elif p.publish_targets %}
-    <span>публикация: {% for t in p.publish_targets %}{{ t.label }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
-    {% endif %}
+
+  <div class="flex gap-3 mt-1" style="font-size: .75rem; color: var(--text-muted); flex-wrap: wrap;">
+    <span><strong>Очередь:</strong>
+      {% if qs %}
+      {{ qs.queued }} в очереди · {{ qs.draft }} черновиков · {{ qs.total }} всего
+      {% if qs.failed > 0 %}<span style="color: var(--failed-text);">· {{ qs.failed }} ошибок</span>{% endif %}
+      {% else %}—{% endif %}
+    </span>
+    <span><strong>Расписания:</strong>
+      {% if active_scheds %}
+      {{ active_scheds | length }} активных
+      {% else %}
+      нет
+      {% endif %}
+    </span>
+    <span><strong>Публикация:</strong>
+      {% if p.publish_bindings %}
+      {% for b in p.publish_bindings %}
+      {{ b.profile_id[:12] }}{% if not loop.last %}, {% endif %}
+      {% endfor %}
+      {% else %}
+      не привязаны
+      {% endif %}
+    </span>
   </div>
+
+  {% if p.defaults.input_values %}
+  <div class="mt-1" style="font-size: .72rem; color: var(--text-light);">
+    <strong>Дефолты:</strong>
+    {% for k, v in p.defaults.input_values.items() %}
+    <span class="mono" style="font-size: .7rem;">{{ k }}="{{ v }}"</span>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 {% endfor %}
+</div>
 {% endblock %}

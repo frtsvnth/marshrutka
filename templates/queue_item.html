@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title or 'Элемент очереди' }}{% endblock %}
+{% block content %}
+
+{% set qs = item.status.value %}
+
+<div class="breadcrumb">
+  <a href="/">Дашборд</a> / <a href="/projects/{{ project.project_id }}">{{ project.display_name }}</a> / Очередь
+</div>
+
+<div class="page-header">
+  <div class="flex" style="justify-content: space-between; align-items: center;">
+    <div>
+      <h1 style="font-size: 1.1rem;">{{ item.title or 'Элемент очереди' }}</h1>
+      <div class="flex gap-2 mt-1" style="font-size: .8rem; color: var(--text-muted); flex-wrap: wrap;">
+        <span class="mono">{{ item.queue_item_id }}</span>
+        <span>проект: <a href="/projects/{{ project.project_id }}">{{ project.display_name }}</a></span>
+      </div>
+    </div>
+    <div class="flex gap-1">
+      <span class="tag tag-lg tag-{{ 'success' if qs == 'launched' else 'running' if qs == 'launching' else 'failed' if qs == 'failed' else 'pending' if qs == 'draft' else 'cancelled' if qs == 'archived' else 'pending' }}">
+        {{ queue_status_labels.get(item.status, qs) }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<form action="/projects/{{ project.project_id }}/queue/{{ item.queue_item_id }}/edit" method="POST">
+  {# ── Summary / Status ── #}
+  <div class="card">
+    <div class="card-title">Параметры элемента</div>
+    <div class="form-group">
+      <label class="form-label" for="title">Название</label>
+      <input type="text" id="title" name="title" value="{{ item.title }}" placeholder="Название элемента очереди">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="status">Статус</label>
+      <select id="status" name="status">
+        {% for s in ['draft', 'queued', 'paused', 'archived'] %}
+        <option value="{{ s }}" {% if item.status.value == s %}selected{% endif %}>{{ queue_status_labels.get(item.status.__class__(s), s) }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-hint">«В очереди» — готов к запуску. «Черновик» — не будет запущен расписанием. «Приостановлен» — временно исключён.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="notes">Заметки</label>
+      <input type="text" id="notes" name="notes" value="{{ item.notes }}" placeholder="Опциональные заметки">
+    </div>
+    <div class="info-grid mt-1">
+      <span class="label">Позиция в очереди</span>
+      <span>{{ item.position }}</span>
+      <span class="label">Источник</span>
+      <span>{{ item.source.value }}</span>
+      <span class="label">Создан</span>
+      <span>{{ item.created_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
+      <span class="label">Обновлён</span>
+      <span>{{ item.updated_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
+      {% if item.last_launch_at %}
+      <span class="label">Последний запуск</span>
+      <span>{{ item.last_launch_at | moscow_time('%Y-%m-%d %H:%M:%S') }}</span>
+      {% endif %}
+      {% if item.last_run_id %}
+      <span class="label">Последний Run ID</span>
+      <span><a href="/runs/{{ item.last_run_id }}" class="mono">{{ item.last_run_id[:20] }}</a></span>
+      {% endif %}
+      {% if item.last_remote_job_id %}
+      <span class="label">Последний Remote Job ID</span>
+      <span class="mono">{{ item.last_remote_job_id }}</span>
+      {% endif %}
+      {% if item.last_error %}
+      <span class="label">Последняя ошибка</span>
+      <span style="color: var(--failed-text);">{{ item.last_error }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Publish intent ── #}
+  <div class="card" style="border-color: var(--success-bg);">
+    <div class="card-title" style="color: var(--success-text);">Настройки публикации</div>
+    <div class="info-grid">
+      <span class="label">Primary artifact проекта</span>
+      <span><span class="mono">{{ project.primary_artifact.artifact_key }}</span> — {{ project.primary_artifact.label }}</span>
+      <span class="label">Профиль публикации</span>
+      <span>
+        <select name="default_publish_profile_id">
+          <option value="">— не выбран —</option>
+          {% for p in profiles %}
+          {% if p.enabled %}
+          <option value="{{ p.profile_id }}" {% if item.default_publish_profile_id == p.profile_id %}selected{% endif %}>
+            {{ p.display_name }} ({{ p.platform.value }})
+          </option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </span>
+      <span class="label">Override artifact key</span>
+      <span>
+        <input type="text" name="publish_artifact_key_override" value="{{ item.publish_artifact_key_override }}" placeholder="Оставьте пустым для использования primary artifact проекта">
+        <div class="form-hint">Если нужно опубликовать другой артефакт, укажите его ключ (например, <span class="mono">audio_mp3</span>).</div>
+      </span>
+    </div>
+  </div>
+
+  {# ── Payload ── #}
+  <div class="card">
+    <div class="card-title">Payload (входные данные)</div>
+    <p style="font-size: .8rem; color: var(--text-muted); margin-bottom: .5rem;">
+      Эти данные будут отправлены в pipeline при запуске. Редактируйте JSON напрямую.
+    </p>
+    <div class="form-group">
+      <textarea id="payload_json" name="payload_json" style="min-height: 200px; font-family: monospace; font-size: .8rem;">{{ item.payload | tojson_unicode }}</textarea>
+    </div>
+    {% if item.payload %}
+    <details>
+      <summary style="font-size: .8rem; color: var(--text-muted);">Краткое содержание payload</summary>
+      <div style="font-size: .8rem; color: var(--text-muted); margin-top: .35rem; padding: .5rem; background: var(--bg); border-radius: 8px;">
+        {% for k, v in item.payload.items() %}
+        <div style="margin-bottom: .2rem;">
+          <span class="mono" style="color: var(--text);">{{ k }}</span>:
+          {% if v is string and v|length > 120 %}
+          <span>{{ v[:120] }}…</span>
+          {% else %}
+          <span>{{ v }}</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+  </div>
+
+  {# ── Launch history ── #}
+  {% if item.launch_history %}
+  <div class="card">
+    <div class="card-title">История запусков ({{ item.launch_history|length }})</div>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Run ID</th><th>Remote Job ID</th><th>Время запуска</th><th>Триггер</th><th>Статус</th></tr>
+      {% for h in item.launch_history %}
+      <tr>
+        <td><a href="/runs/{{ h.run_id }}" class="mono">{{ h.run_id[:16] }}</a></td>
+        <td class="mono">{{ (h.remote_job_id or '—')[:16] }}</td>
+        <td>{{ h.launched_at[:16] if h.launched_at else '—' }}</td>
+        <td><span class="tag tag-sm tag-pending">{{ h.get('trigger', '?') }}</span></td>
+        <td>{{ h.get('remote_status', '?') }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Actions ── #}
+  <div class="flex gap-1">
+    <button type="submit" class="btn btn-primary">💾 Сохранить изменения</button>
+    {% if qs in ('queued', 'draft', 'failed') %}
+    <button type="submit" class="btn btn-success" formaction="/projects/{{ project.project_id }}/queue/{{ item.queue_item_id }}/launch" formmethod="POST">▶ Запустить сейчас</button>
+    {% endif %}
+    <a href="/projects/{{ project.project_id }}" class="btn btn-outline">← Назад к проекту</a>
+  </div>
+</form>
+
+{% endblock %}

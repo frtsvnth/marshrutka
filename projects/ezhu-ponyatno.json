@@ -21,12 +21,12 @@
       "key": "speech_rate",
       "label": "Скорость речи",
       "type": "text",
-      "required": false,
+      "required": true,
       "default": null,
       "placeholder": "",
       "options": [],
       "helper_text": "",
-      "visible": true,
+      "visible": false,
       "supports_default": true,
       "deprecated": false
     },
@@ -34,7 +34,7 @@
       "key": "voice",
       "label": "Голос TTS",
       "type": "select",
-      "required": false,
+      "required": true,
       "default": null,
       "placeholder": "",
       "options": [
@@ -47,7 +47,7 @@
         "Kin_24000"
       ],
       "helper_text": "",
-      "visible": true,
+      "visible": false,
       "supports_default": true,
       "deprecated": false
     },
@@ -55,12 +55,12 @@
       "key": "landscape",
       "label": "Ландшафтный формат (16:9)",
       "type": "checkbox",
-      "required": false,
+      "required": true,
       "default": null,
       "placeholder": "",
       "options": [],
       "helper_text": "",
-      "visible": true,
+      "visible": false,
       "supports_default": true,
       "deprecated": false
     },
@@ -68,12 +68,12 @@
       "key": "telegram_enabled",
       "label": "Опубликовать в Telegram",
       "type": "checkbox",
-      "required": false,
+      "required": true,
       "default": null,
       "placeholder": "",
       "options": [],
       "helper_text": "",
-      "visible": true,
+      "visible": false,
       "supports_default": true,
       "deprecated": false
     }

@@ -84,6 +84,10 @@
         addToolToStep(currentStepId, m.toolName, m.summary);
       } else if (m.role === 'assistant' && m.stepId !== undefined) {
         finishStepWithContent(m.stepId, m.content || '');
+        if (m.suggestions && m.suggestions.length > 0 && !m.suggestionsUsed) {
+          var stepRoot = document.querySelector('.ai-step[data-step-id="' + m.stepId + '"]');
+          if (stepRoot) renderSuggestionsInElement(stepRoot, m.suggestions, m.stepId);
+        }
         currentStepId = null;
       } else if (m.type === 'error') {
         showErrorDOM(m.content);
@@ -128,6 +132,7 @@
   function beginStep(stepId) {
     var root = document.createElement('div');
     root.className = 'ai-step';
+    root.dataset.stepId = stepId;
     var tools = document.createElement('div');
     tools.className = 'ai-step-tools';
     root.appendChild(tools);
@@ -161,6 +166,39 @@
     if (content) setBubbleContent(step.bubbleEl, content);
     step.bubbleEl.classList.remove('streaming');
     delete stepsById[stepId];
+  }
+
+  /* ── Suggestions ── */
+  function renderSuggestionsInElement(rootEl, suggestions, stepId) {
+    var container = document.createElement('div');
+    container.className = 'ai-suggestions';
+    for (var i = 0; i < suggestions.length; i++) {
+      (function(text) {
+        var btn = document.createElement('button');
+        btn.className = 'ai-suggestion-btn';
+        btn.textContent = text;
+        btn.addEventListener('click', function() {
+          handleSuggestionClick(stepId, text);
+        });
+        container.appendChild(btn);
+      })(suggestions[i]);
+    }
+    rootEl.appendChild(container);
+  }
+
+  function handleSuggestionClick(stepId, text) {
+    if (state.isStreaming) return;
+    for (var i = 0; i < state.messages.length; i++) {
+      var m = state.messages[i];
+      if (m.role === 'assistant' && m.stepId === stepId) {
+        m.suggestionsUsed = true;
+        break;
+      }
+    }
+    var containers = document.querySelectorAll('.ai-suggestions');
+    for (var i = 0; i < containers.length; i++) containers[i].remove();
+    persistState();
+    sendMessage(text);
   }
 
   /* ── Tool icons ── */
@@ -423,8 +461,18 @@
           if (data.content) {
             fullResponse = data.content;
             lastMessageDone = true;
-            state.messages.push({ role: 'assistant', stepId: stepId, content: data.content });
+            var suggestions = data.suggestions || [];
+            var msgObj = { role: 'assistant', stepId: stepId, content: data.content };
+            if (suggestions.length > 0) {
+              msgObj.suggestions = suggestions;
+              msgObj.suggestionsUsed = false;
+            }
+            state.messages.push(msgObj);
             finishStepWithContent(stepId, data.content);
+            if (suggestions.length > 0) {
+              var stepRoot = document.querySelector('.ai-step[data-step-id="' + stepId + '"]');
+              if (stepRoot) renderSuggestionsInElement(stepRoot, suggestions, stepId);
+            }
             persistState();
             scrollToBottom();
           }

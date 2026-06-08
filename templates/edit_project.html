@@ -138,9 +138,9 @@
           <input type="text" name="field_helper_{{ loop.index0 }}" value="{{ f.helper_text }}" placeholder="Подсказка под полем">
         </div>
         <div class="flex gap-2">
-          <label><input type="checkbox" name="field_req_{{ loop.index0 }}" {% if f.required %}checked{% endif %}> обязательное</label>
-          <label><input type="checkbox" name="field_visible_{{ loop.index0 }}" {% if f.visible %}checked{% endif %}> видимое в форме</label>
-          <label><input type="checkbox" name="field_supports_default_{{ loop.index0 }}" {% if f.supports_default %}checked{% endif %}> поддержка default</label>
+          <label><input type="hidden" name="field_req_{{ loop.index0 }}" value="off"><input type="checkbox" name="field_req_{{ loop.index0 }}" value="on" {% if f.required %}checked{% endif %}> обязательное</label>
+          <label><input type="hidden" name="field_visible_{{ loop.index0 }}" value="off"><input type="checkbox" name="field_visible_{{ loop.index0 }}" value="on" {% if f.visible %}checked{% endif %}> показывать в форме</label>
+          <label title="Если включено, для поля можно задать значение по умолчанию на уровне проекта"><input type="hidden" name="field_supports_default_{{ loop.index0 }}" value="off"><input type="checkbox" name="field_supports_default_{{ loop.index0 }}" value="on" {% if f.supports_default %}checked{% endif %}> проектное значение по умолч.</label>
         </div>
       </div>
       {% endfor %}
@@ -232,9 +232,9 @@ function addField() {
     '<div class="form-group" style="flex: 1;"><label class="form-label">Значение по умолч.</label><input type="text" name="field_default_' + idx + '"></div>' +
     '<div class="form-group" style="flex: 1;"><label class="form-label">Опции</label><input type="text" name="field_options_' + idx + '"></div></div>' +
     '<div class="form-group"><label class="form-label">Helper text</label><input type="text" name="field_helper_' + idx + '" placeholder="Подсказка под полем"></div>' +
-    '<label><input type="checkbox" name="field_req_' + idx + '"> обязательное</label>' +
-    '<label><input type="checkbox" name="field_visible_' + idx + '" checked> видимое в форме</label>' +
-    '<label><input type="checkbox" name="field_supports_default_' + idx + '" checked> поддержка default</label>' +
+    '<label><input type="hidden" name="field_req_' + idx + '" value="off"><input type="checkbox" name="field_req_' + idx + '" value="on"> обязательное</label>' +
+    '<label><input type="hidden" name="field_visible_' + idx + '" value="off"><input type="checkbox" name="field_visible_' + idx + '" value="on" checked> показывать в форме</label>' +
+    '<label title="Если включено, для поля можно задать значение по умолчанию на уровне проекта"><input type="hidden" name="field_supports_default_' + idx + '" value="off"><input type="checkbox" name="field_supports_default_' + idx + '" value="on" checked> проектное значение по умолч.</label>' +
     '</div>';
   container.insertAdjacentHTML('beforeend', html);
   document.getElementById('fieldCount').value = count + 1;

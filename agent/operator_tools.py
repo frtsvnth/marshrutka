@@ -158,3 +158,56 @@ def list_auto_tasks(status: str = "") -> dict:
     except Exception as e:
         logger.exception("list_auto_tasks failed")
         return {"error": "Ошибка списка задач"}
+
+
+def delete_runs(
+    project_id: str = "",
+    statuses: str = "",
+    ids: str = "",
+    confirm: bool = False,
+) -> dict:
+    try:
+        all_runs = runs_store.list()
+        if project_id:
+            all_runs = [r for r in all_runs if r.project_id == project_id]
+        if statuses:
+            status_list = [s.strip() for s in statuses.split(",") if s.strip()]
+            all_runs = [r for r in all_runs if r.orchestration_status and r.orchestration_status.value in status_list]
+        if ids:
+            id_list = [i.strip() for i in ids.split(",") if i.strip()]
+            all_runs = [r for r in all_runs if r.run_id in id_list]
+
+        if not all_runs:
+            return {"deleted_count": 0, "preview": [], "message": "Нет запусков по заданным критериям"}
+
+        preview = [
+            {
+                "run_id": r.run_id,
+                "project_id": r.project_id,
+                "status": r.orchestration_status.value if r.orchestration_status else "?",
+                "created_at": moscow_time(r.created_at, "%d.%m.%Y %H:%M") if r.created_at else "?",
+            }
+            for r in all_runs
+        ]
+
+        if not confirm:
+            return {
+                "deleted_count": 0,
+                "preview": preview,
+                "message": f"Найдено {len(preview)} запусков. Вызови с confirm=True для удаления.",
+            }
+
+        deleted_ids = []
+        for r in all_runs:
+            runs_store.delete(r.run_id)
+            deleted_ids.append(r.run_id)
+
+        return {
+            "deleted_count": len(deleted_ids),
+            "preview": preview,
+            "message": f"Удалено {len(deleted_ids)} запусков.",
+        }
+
+    except Exception as e:
+        logger.exception("delete_runs failed")
+        return {"error": f"Ошибка удаления запусков: {e}"}

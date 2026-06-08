@@ -107,30 +107,34 @@ async def dashboard_page(request: Request):
     projects = load_projects()
     project_cards = []
     all_schedules = schedules_store.list()
+    now = datetime.utcnow()
     for p in projects:
         summary = queue_store.get_queue_summary(p.project_id)
         p_schedules = [s for s in all_schedules if s.project_id == p.project_id]
         active_schedules = [s for s in p_schedules if s.enabled]
-        next_run = None
-        if active_schedules:
-            next_run = min(
-                (s.last_run_at or datetime.min for s in active_schedules),
-                default=None,
-            )
         runs = [r for r in runs_store.list() if r.project_id == p.project_id]
         last_run = max(runs, key=lambda r: r.created_at, default=None) if runs else None
+        stale_days = 999
+        if last_run and last_run.created_at:
+            stale_days = (now - last_run.created_at).days
         project_cards.append({
             "project": p,
             "queue_summary": summary,
             "schedule_count": len(p_schedules),
             "active_schedule_count": len(active_schedules),
             "last_run": last_run,
+            "stale_days": stale_days,
             "primary_artifact": {
                 "key": p.primary_artifact.artifact_key,
                 "label": p.primary_artifact.label,
             },
         })
-    project_cards.sort(key=lambda c: c["project"].display_name)
+    project_cards.sort(key=lambda c: (
+        0 if c["queue_summary"].get("failed", 0) > 0 else
+        1 if c["stale_days"] > 7 else
+        2 if c["queue_summary"].get("queued", 0) > 0 else
+        3
+    ))
     return HTMLResponse(render(
         "dashboard.html", request=request,
         project_cards=project_cards,
@@ -143,7 +147,18 @@ async def dashboard_page(request: Request):
 @router.get("/projects", response_class=HTMLResponse)
 async def projects_list_page(request: Request):
     projects = load_projects()
-    return HTMLResponse(render("projects.html", request=request, projects=projects))
+    all_schedules = schedules_store.list()
+    all_schedules_by_project = {}
+    for s in all_schedules:
+        all_schedules_by_project.setdefault(s.project_id, []).append(s)
+    queue_summaries = {}
+    for p in projects:
+        queue_summaries[p.project_id] = queue_store.get_queue_summary(p.project_id)
+    return HTMLResponse(render(
+        "projects.html", request=request, projects=projects,
+        all_schedules_by_project=all_schedules_by_project,
+        queue_summaries=queue_summaries,
+    ))
 
 
 @router.get("/projects/new", response_class=HTMLResponse)
@@ -276,6 +291,52 @@ async def run_project_form(project_id: str, request: Request):
 
 
 # ── Queue management routes ──
+
+
+@router.get("/projects/{project_id}/queue/{queue_item_id}", response_class=HTMLResponse)
+async def queue_item_detail_page(request: Request, project_id: str, queue_item_id: str):
+    project = get_project(project_id)
+    if not project:
+        return HTMLResponse("Проект не найден", status_code=404)
+    item = queue_store.get_item(project_id, queue_item_id)
+    if not item:
+        return HTMLResponse("Элемент очереди не найден", status_code=404)
+    profiles = profiles_store.list()
+    return HTMLResponse(render(
+        "queue_item.html", request=request,
+        project=project, item=item, profiles=profiles,
+        queue_status_labels=QUEUE_STATUS_LABELS,
+    ))
+
+
+@router.post("/projects/{project_id}/queue/{queue_item_id}/edit", response_class=RedirectResponse)
+async def queue_item_edit_form(project_id: str, queue_item_id: str, request: Request):
+    item = queue_store.get_item(project_id, queue_item_id)
+    if not item:
+        return HTMLResponse("Item not found", status_code=404)
+    form = await request.form()
+    form_data = dict(form)
+    item.title = form_data.get("title", item.title)
+    item.notes = form_data.get("notes", item.notes)
+    item.default_publish_profile_id = form_data.get("default_publish_profile_id", "")
+    item.publish_artifact_key_override = form_data.get("publish_artifact_key_override", "")
+
+    status_str = form_data.get("status", "")
+    if status_str:
+        try:
+            item.status = QueueItemStatus(status_str)
+        except ValueError:
+            pass
+
+    payload_raw = form_data.get("payload_json", "{}")
+    try:
+        item.payload = _json.loads(payload_raw)
+    except Exception:
+        pass
+
+    item.updated_at = datetime.utcnow()
+    queue_store.save_item(project_id, item)
+    return RedirectResponse(f"/projects/{project_id}/queue/{queue_item_id}", status_code=303)
 
 
 @router.post("/projects/{project_id}/queue/{queue_item_id}/launch", response_class=RedirectResponse)
@@ -672,12 +733,12 @@ def _parse_fields(form_data: dict) -> list[ProjectInputField]:
         options_raw = form_data.get(f"field_options_{i}", "")
         options = [o.strip() for o in options_raw.split(",") if o.strip()] if options_raw else []
         helper = form_data.get(f"field_helper_{i}", "")
-        visible = f"field_visible_{i}" not in form_data or form_data.get(f"field_visible_{i}") != "off"
-        supports_default = f"field_supports_default_{i}" not in form_data or form_data.get(f"field_supports_default_{i}") != "off"
+        visible = form_data.get(f"field_visible_{i}") == "on"
+        can_have_default = form_data.get(f"field_supports_default_{i}") == "on"
         field = ProjectInputField(
             key=key, label=label, type=ftype, required=required,
             options=options, helper_text=helper,
-            visible=visible, supports_default=supports_default,
+            visible=visible, supports_default=can_have_default,
         )
         default_raw = form_data.get(f"field_default_{i}", "")
         if default_raw:

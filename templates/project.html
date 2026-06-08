@@ -60,7 +60,9 @@
         {{ queue_status_labels.get(qi.status, qs) }}
       </span>
       <div style="min-width: 0;">
-        <div style="font-size: .84rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ qi.title or 'Без названия' }}</div>
+        <div style="font-size: .84rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <a href="/projects/{{ project.project_id }}/queue/{{ qi.queue_item_id }}" style="color: var(--text);">{{ qi.title or 'Без названия' }}</a>
+        </div>
         <div style="font-size: .72rem; color: var(--text-muted);">
           pos {{ qi.position }}
           {% if qi.last_run_id %}· <a href="/runs/{{ qi.last_run_id }}" style="color: var(--text-muted);">последний: {{ qi.last_run_id[:12] }}</a>{% endif %}

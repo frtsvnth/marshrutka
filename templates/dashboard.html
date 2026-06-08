@@ -5,7 +5,7 @@
   <div class="flex" style="justify-content: space-between; align-items: center;">
     <div>
       <h1>Дашборд</h1>
-      <div class="description">Оперативная сводка по всем проектам.</div>
+      <div class="description">Оперативная сводка: какие проекты требуют внимания, где есть очередь, где проблемы.</div>
     </div>
     <a href="/projects/new" class="btn btn-primary">+ Добавить проект</a>
   </div>
@@ -20,66 +20,72 @@
 {% for card in project_cards %}
 {% set p = card.project %}
 {% set qs = card.queue_summary %}
-<div class="card" style="border-left: 4px solid var(--indigo);">
+{% set has_attention = qs.failed > 0 or (qs.total > 0 and qs.queued == 0 and qs.draft > 0) or card.stale_days > 7 %}
+{% set border_color = 'var(--failed-text)' if qs.failed > 0 else 'var(--amber)' if card.stale_days > 7 else 'var(--indigo)' %}
+<div class="card" style="border-left: 4px solid {{ border_color }};">
   <div class="flex" style="justify-content: space-between; align-items: flex-start;">
     <div style="flex: 1;">
-      <div class="flex gap-2" style="align-items: center;">
+      <div class="flex gap-2" style="align-items: center; flex-wrap: wrap;">
         <a href="/projects/{{ p.project_id }}" style="font-size: 1.05rem; font-weight: 700; color: var(--text);">{{ p.display_name }}</a>
         {% if not p.enabled %}
         <span class="tag tag-pending">отключён</span>
         {% endif %}
-        <span class="tag tag-sm tag-local" style="font-size: .65rem;">{{ p.primary_artifact.label }}</span>
+        {% if qs.failed > 0 %}
+        <span class="tag tag-failed" style="font-size: .72rem;">⚠ {{ qs.failed }} в очереди с ошибкой</span>
+        {% endif %}
+        {% if card.stale_days > 7 %}
+        <span class="tag tag-cancelled" style="font-size: .72rem;">⏳ нет запусков {{ card.stale_days }} дн.</span>
+        {% endif %}
+        {% if qs.queued > 0 %}
+        <span class="tag tag-running" style="font-size: .72rem;">{{ qs.queued }} готовы к запуску</span>
+        {% endif %}
       </div>
       {% if p.description %}
       <p style="color: var(--text-muted); font-size: .82rem; margin-top: .15rem; max-width: 500px;">{{ p.description[:200] }}{% if p.description|length > 200 %}…{% endif %}</p>
       {% endif %}
     </div>
-    <div class="flex gap-1">
-      <a href="/projects/{{ p.project_id }}" class="btn btn-sm btn-outline">Открыть</a>
-    </div>
   </div>
 
-  <div class="flex gap-3" style="margin-top: .65rem; flex-wrap: wrap;">
-    <div style="font-size: .78rem; color: var(--text-muted);">
-      <strong style="color: var(--text);">Очередь</strong>:
-      <span class="tag tag-sm tag-pending">{{ qs.queued }} в очереди</span>
-      <span class="tag tag-sm tag-local">{{ qs.draft }} черновиков</span>
-      {% if qs.failed > 0 %}<span class="tag tag-sm tag-failed">{{ qs.failed }} ошибок</span>{% endif %}
+  <div class="flex gap-3 mt-1" style="flex-wrap: wrap; font-size: .78rem; color: var(--text-muted);">
+    <div><strong style="color: var(--text);">Очередь:</strong>
+      {% if qs.queued > 0 %}<span class="tag tag-sm tag-running">{{ qs.queued }} в очереди</span>{% endif %}
+      {% if qs.draft > 0 %}<span class="tag tag-sm tag-pending">{{ qs.draft }} черновиков</span>{% endif %}
+      {% if qs.failed > 0 %}<span class="tag tag-sm tag-failed">{{ qs.failed }} с ошибкой</span>{% endif %}
+      {% if qs.total == 0 %}<span style="color: var(--text-light);">пуста</span>{% endif %}
       <span class="tag tag-sm" style="background: #f3f4f6; color: #6b7280;">{{ qs.total }} всего</span>
     </div>
-    <div style="font-size: .78rem; color: var(--text-muted);">
-      <strong style="color: var(--text);">Расписания</strong>:
+    <div><strong style="color: var(--text);">Расписания:</strong>
       {% if card.active_schedule_count > 0 %}
       <span class="tag tag-sm tag-success">{{ card.active_schedule_count }} активных</span>
       {% else %}
-      <span style="color: var(--text-light);">нет</span>
+      <span style="color: var(--text-light);">не настроены</span>
       {% endif %}
     </div>
-    {% if card.last_run %}
-    <div style="font-size: .78rem; color: var(--text-muted);">
-      <strong style="color: var(--text);">Последний запуск</strong>:
+    <div><strong style="color: var(--text);">Последний запуск:</strong>
+      {% if card.last_run %}
       {{ card.last_run.created_at | moscow_time('%d.%m %H:%M') }}
       {% if card.last_run.remote_status.value %}
       <span class="tag tag-sm tag-{{ 'success' if card.last_run.remote_status.value == 'success' else 'running' if card.last_run.remote_status.value in ('running','pending') else 'failed' if card.last_run.remote_status.value == 'failed' else 'pending' }}">
         {{ card.last_run.remote_status.value }}
       </span>
       {% endif %}
+      {% else %}
+      <span style="color: var(--text-light);">не было</span>
+      {% endif %}
     </div>
-    {% endif %}
-    <div style="font-size: .78rem; color: var(--text-muted);">
-      <strong style="color: var(--text);">Primary artifact</strong>:
+    <div><strong style="color: var(--text);">Primary:</strong>
       <span class="mono" style="font-size: .75rem;">{{ p.primary_artifact.artifact_key }}</span>
     </div>
   </div>
 
-  <div class="flex gap-1 mt-1" style="flex-wrap: wrap;">
-    <a href="/projects/{{ p.project_id }}" class="btn btn-sm btn-outline">Проект</a>
-    <a href="/projects/{{ p.project_id }}#queue" class="btn btn-sm btn-outline">Очередь</a>
-    <a href="/projects/{{ p.project_id }}#run-form" class="btn btn-sm btn-primary">▶ Быстрый запуск</a>
+  <div class="flex gap-1 mt-2" style="flex-wrap: wrap;">
+    <a href="/projects/{{ p.project_id }}" class="btn btn-sm btn-outline">Открыть проект</a>
     {% if qs.queued > 0 %}
     <form action="/projects/{{ p.project_id }}/launch-next" method="POST" style="display:inline;">
-      <button class="btn btn-sm btn-success">▶ Запустить следующий</button>
+      <button class="btn btn-sm btn-success">▶ Запустить следующий из очереди</button>
     </form>
+    {% else %}
+    <a href="/projects/{{ p.project_id }}#run-form" class="btn btn-sm btn-primary">▶ Создать запуск</a>
     {% endif %}
   </div>
 </div>
