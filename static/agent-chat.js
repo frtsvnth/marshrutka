@@ -1,10 +1,6 @@
 (function () {
   'use strict';
 
-  if (typeof marked === 'undefined') {
-    setTimeout(function () { window.dispatchEvent(new Event('agentChatReady')); }, 100);
-  }
-
   var els = {};
   var state = {
     sessionId: '',
@@ -17,12 +13,13 @@
 
   var STORAGE_KEY = 'marshrutka_agent_state';
 
+  /* ── Init ── */
   function init() {
     els.panel = document.getElementById('aiPanel');
     els.messages = document.getElementById('aiChatMessages');
-    els.textarea = document.querySelector('.ai-composer textarea');
-    els.sendBtn = document.querySelector('.send-btn');
-    els.voiceBtn = document.querySelector('.voice-btn');
+    els.textarea = document.querySelector('.ai-panel .ai-composer textarea');
+    els.sendBtn = document.querySelector('.ai-composer .send-btn');
+    els.voiceBtn = document.querySelector('.ai-composer .voice-btn');
     els.copyDialogBtn = document.getElementById('copyDialogBtn');
     els.copyTraceBtn = document.getElementById('copyTraceBtn');
     els.downloadTraceBtn = document.getElementById('downloadTraceBtn');
@@ -30,9 +27,9 @@
     if (!els.messages) return;
     restoreState();
     setupListeners();
-    setTimeout(restoreFromServer, 200);
   }
 
+  /* ── localStorage persistence ── */
   function restoreState() {
     try {
       var saved = localStorage.getItem(STORAGE_KEY);
@@ -48,7 +45,7 @@
         }
         state.isOpen = s.isOpen !== false;
       }
-    } catch (e) {}
+    } catch (e) { /* ignore */ }
     if (state.messages.length > 0) {
       renderAllMessages();
     }
@@ -68,40 +65,15 @@
         draft: els.textarea ? els.textarea.value : '',
         isOpen: state.isOpen,
       }));
-    } catch (e) {}
+    } catch (e) { /* ignore */ }
   }
 
-  function restoreFromServer() {
-    if (!state.sessionId) return;
-    fetch('/api/agent/state/load?session_id=' + encodeURIComponent(state.sessionId))
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data.messages && data.messages.length > 0) {
-          state.messages = data.messages;
-          state.eventTrace = data.eventTrace || [];
-          renderAllMessages();
-          persistState();
-        }
-      })
-      .catch(function () {});
-  }
-
-  function saveToServer() {
-    if (!state.sessionId) return;
-    var body = JSON.stringify({
-      session_id: state.sessionId,
-      messages: state.messages.slice(-50),
-      eventTrace: state.eventTrace.slice(-200),
-      draft: els.textarea ? els.textarea.value : '',
-    });
-    navigator.sendBeacon('/api/agent/state/save', new Blob([body], { type: 'application/json' }));
-  }
-
+  /* ── DOM rendering ── */
   function renderAllMessages() {
     var container = els.messages;
     if (!container) return;
     hideWelcome();
-    var existing = container.querySelectorAll('.ai-message, .ai-tool-event, .ai-error');
+    var existing = container.querySelectorAll('.ai-message, .ai-tool-event, .ai-error, .ai-step');
     for (var i = 0; i < existing.length; i++) {
       existing[i].remove();
     }
@@ -109,6 +81,8 @@
       var m = state.messages[i];
       if (m.type === 'tool_event') {
         addToolEventDOM(m.toolName, m.summary);
+      } else if (m.type === 'step_start') {
+        /* skip — rendered implicitly */
       } else if (m.type === 'error') {
         showErrorDOM(m.content);
       } else {
@@ -120,16 +94,18 @@
 
   function hideWelcome() {
     var w = els.messages.querySelector('.ai-welcome');
-    if (w) { w.style.display = 'none'; }
+    if (w) w.style.display = 'none';
   }
 
   function showWelcome() {
     var w = els.messages.querySelector('.ai-welcome');
-    if (w) { w.style.display = ''; }
+    if (w) w.style.display = '';
   }
 
   function scrollToBottom() {
-    els.messages.scrollTop = els.messages.scrollHeight;
+    if (els.messages) {
+      els.messages.scrollTop = els.messages.scrollHeight;
+    }
   }
 
   function addMessageDOM(role, content, isStreaming) {
@@ -139,9 +115,7 @@
     bubble.className = 'bubble';
     if (isStreaming) bubble.classList.add('streaming');
     div.appendChild(bubble);
-    if (els.messages) {
-      els.messages.appendChild(div);
-    }
+    if (els.messages) els.messages.appendChild(div);
     if (content) {
       setBubbleContent(bubble, content);
     }
@@ -158,6 +132,59 @@
     }
   }
 
+  /* ── Step container for tool-first rendering ── */
+  var _currentStepEl = null;
+  var _currentStepToolsEl = null;
+
+  function beginStep() {
+    _currentStepEl = document.createElement('div');
+    _currentStepEl.className = 'ai-step';
+    _currentStepToolsEl = document.createElement('div');
+    _currentStepToolsEl.className = 'ai-step-tools';
+    _currentStepEl.appendChild(_currentStepToolsEl);
+    if (els.messages) els.messages.appendChild(_currentStepEl);
+    scrollToBottom();
+  }
+
+  function addToolToStep(toolName, summary) {
+    if (!_currentStepToolsEl) beginStep();
+    var div = document.createElement('div');
+    div.className = 'ai-tool-event';
+    div.innerHTML =
+      '<span class="tool-icon">' + toolIcon(toolName) + '</span>' +
+      '<span class="tool-label">' + escapeHtml(toolName) + '</span>' +
+      '<span class="tool-summary">' + escapeHtml(summary) + '</span>';
+    _currentStepToolsEl.appendChild(div);
+    scrollToBottom();
+  }
+
+  function finishStepWithContent(content) {
+    if (_currentStepEl) {
+      var div = document.createElement('div');
+      div.className = 'ai-message assistant';
+      var bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      div.appendChild(bubble);
+      _currentStepEl.appendChild(div);
+      if (content) setBubbleContent(bubble, content);
+      scrollToBottom();
+    }
+    _currentStepEl = null;
+    _currentStepToolsEl = null;
+  }
+
+  function abortStep(fallbackContent) {
+    if (_currentStepEl) {
+      _currentStepEl.remove();
+    }
+    if (fallbackContent) {
+      addMessageDOM('assistant', fallbackContent, false);
+    }
+    _currentStepEl = null;
+    _currentStepToolsEl = null;
+  }
+
+  /* ── Tool icons ── */
   function toolIcon(name) {
     if (name.indexOf('youtube') !== -1) return '\u25B6';
     if (name.indexOf('search_web') !== -1 || name.indexOf('search') !== -1) return '\uD83C\uDF10';
@@ -169,13 +196,14 @@
   }
 
   function addToolEventDOM(toolName, summary) {
+    if (!_currentStepToolsEl) beginStep();
     var div = document.createElement('div');
     div.className = 'ai-tool-event';
     div.innerHTML =
       '<span class="tool-icon">' + toolIcon(toolName) + '</span>' +
       '<span class="tool-label">' + escapeHtml(toolName) + '</span>' +
       '<span class="tool-summary">' + escapeHtml(summary) + '</span>';
-    if (els.messages) els.messages.appendChild(div);
+    if (_currentStepToolsEl) _currentStepToolsEl.appendChild(div);
     scrollToBottom();
     return div;
   }
@@ -194,20 +222,22 @@
     return d.innerHTML;
   }
 
+  /* ── Input state ── */
   function setInputEnabled(enabled) {
     if (els.textarea) els.textarea.disabled = !enabled;
     if (els.sendBtn) els.sendBtn.disabled = !enabled;
     if (els.voiceBtn) els.voiceBtn.disabled = !enabled;
-    if (enabled && els.textarea) { els.textarea.focus(); }
+    if (enabled && els.textarea) els.textarea.focus();
   }
 
+  /* ── Dialog / Trace formatting ── */
   function formatDialog() {
     var lines = [];
     for (var i = 0; i < state.messages.length; i++) {
       var m = state.messages[i];
-      if (m.type === 'tool_event' || m.type === 'error') continue;
+      if (m.type === 'tool_event' || m.type === 'error' || m.type === 'step_start') continue;
       lines.push('[' + m.role + ']');
-      lines.push(m.content);
+      lines.push(m.content || '');
       lines.push('');
     }
     return lines.join('\n').trim();
@@ -224,38 +254,53 @@
     }, null, 2);
   }
 
-  function showTranscriptModal(title, content) {
-    var existing = document.querySelector('.ai-transcript-overlay');
-    if (existing) existing.remove();
-    var overlay = document.createElement('div');
-    overlay.className = 'ai-transcript-overlay open';
-    overlay.innerHTML =
-      '<div class="ai-transcript-card">' +
-      '  <div class="ai-transcript-header">' +
-      '    <span class="ai-transcript-title">' + escapeHtml(title) + '</span>' +
-      '    <button class="ai-transcript-close" onclick="this.closest(\'.ai-transcript-overlay\').remove()">\u2715</button>' +
-      '  </div>' +
-      '  <div class="ai-transcript-body"><pre>' + escapeHtml(content) + '</pre></div>' +
-      '  <div class="ai-transcript-actions">' +
-      '    <button onclick="var p=this.closest(\'.ai-transcript-overlay\').querySelector(\'pre\');navigator.clipboard.writeText(p.textContent);this.textContent=\'\u2713 Copied\';setTimeout(function(){this.textContent=\'\uD83D\uDCCB Copy\'}.bind(this),1500)">\uD83D\uDCCB Copy</button>' +
-      '  </div>' +
-      '</div>';
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.remove();
+  /* ── Toast ── */
+  function showToast(msg) {
+    var el = document.querySelector('.ai-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'ai-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  /* ── Clipboard helpers ── */
+  function copyToClipboard(text, label) {
+    if (!text) { showToast('Nothing to copy'); return; }
+    navigator.clipboard.writeText(text).then(function () {
+      showToast(label || '\u2713 Copied');
+    }).catch(function () {
+      fallbackCopy(text, label);
     });
   }
 
+  function fallbackCopy(text, label) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast(label || '\u2713 Copied');
+    } catch (e) {
+      showToast('Copy failed');
+    }
+    document.body.removeChild(ta);
+  }
+
+  /* ── Button handlers ── */
   window.copyDialog = function () {
-    var text = formatDialog();
-    if (!text) return;
-    showTranscriptModal('Dialog Transcript', text);
+    copyToClipboard(formatDialog(), '\u2713 Dialog copied');
   };
 
   window.copyTrace = function () {
-    var text = formatTrace();
-    if (!text) return;
-    showTranscriptModal('Debug Trace', text);
+    copyToClipboard(formatTrace(), '\u2713 Trace copied');
   };
 
   window.downloadTrace = function () {
@@ -280,16 +325,25 @@
     persistState();
     var container = els.messages;
     if (container) {
-      var items = container.querySelectorAll('.ai-message, .ai-tool-event, .ai-error');
+      var items = container.querySelectorAll('.ai-message, .ai-tool-event, .ai-error, .ai-step');
       for (var i = 0; i < items.length; i++) items[i].remove();
       var w = container.querySelector('.ai-welcome');
       if (w) w.style.display = '';
     }
+    abortStep();
   };
 
+  window.clearChatHistory = function () {
+    if (state.sessionId) {
+      fetch('/api/agent/history?session_id=' + encodeURIComponent(state.sessionId), { method: 'DELETE' }).catch(function () {});
+    }
+    window.clearChat();
+  };
+
+  /* ── Tool event logging (replay-safe) ── */
   function addToolEvent(toolName, summary) {
     state.messages.push({ type: 'tool_event', role: 'tool', toolName: toolName, summary: summary });
-    addToolEventDOM(toolName, summary);
+    addToolToStep(toolName, summary);
     persistState();
   }
 
@@ -299,17 +353,21 @@
     persistState();
   }
 
+  /* ── Main send flow ── */
   async function sendMessage(text) {
     if (!text.trim() || state.isStreaming) return;
     state.isStreaming = true;
     hideWelcome();
+
     state.messages.push({ role: 'user', content: text });
-    var userBubble = addMessageDOM('user', text, false);
-    var asstBubble = addMessageDOM('assistant', '', true);
+    addMessageDOM('user', text, false);
     setInputEnabled(false);
     persistState();
+
     var fullResponse = '';
     var lastMessageDone = false;
+    var stepHadTools = false;
+
     try {
       var resp = await fetch('/api/agent/chat', {
         method: 'POST',
@@ -317,10 +375,12 @@
         body: JSON.stringify({ message: text, session_id: state.sessionId }),
       });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
       var reader = resp.body.getReader();
       var decoder = new TextDecoder();
       var buffer = '';
       var eventType = '';
+
       while (true) {
         var readResult = await reader.read();
         if (readResult.done) break;
@@ -339,18 +399,19 @@
       }
     } catch (err) {
       if (!lastMessageDone) {
-        asstBubble.textContent = '\u274C Connection error: ' + err.message;
+        showError('Connection error: ' + err.message);
       }
     } finally {
       state.isStreaming = false;
-      asstBubble.classList.remove('streaming');
       setInputEnabled(true);
       scrollToBottom();
       persistState();
-      saveToServer();
     }
-    if (fullResponse.trim() && !lastMessageDone) {
-      setBubbleContent(asstBubble, fullResponse);
+
+    if (fullResponse.trim() && !lastMessageDone && !stepHadTools) {
+      state.messages.push({ role: 'assistant', content: fullResponse });
+      addMessageDOM('assistant', fullResponse);
+      persistState();
     }
 
     function handleOneEvent(evType, rawData) {
@@ -358,45 +419,60 @@
       try { data = JSON.parse(rawData); } catch (e) { return; }
       var type = data.type || evType;
       state.eventTrace.push({ type: type, data: data, ts: Date.now() });
+
       switch (type) {
         case 'session':
           state.sessionId = data.session_id || '';
           persistState();
           break;
+
         case 'token':
           if (data.content) {
-            asstBubble.textContent += data.content;
             fullResponse += data.content;
             scrollToBottom();
           }
           break;
+
         case 'tool_start':
+          stepHadTools = true;
           addToolEvent(data.tool_name || 'tool', '\u2026');
           break;
+
         case 'tool_result':
           var summary = data.result_summary || 'done';
           if (data.duration_ms) summary += ' (' + data.duration_ms + 'ms)';
           addToolEvent(data.tool_name || 'tool', summary);
           break;
+
         case 'message_start':
           break;
+
         case 'message_done':
           if (data.content) {
-            setBubbleContent(asstBubble, data.content);
             fullResponse = data.content;
             lastMessageDone = true;
+            if (stepHadTools) {
+              finishStepWithContent(data.content);
+            } else {
+              addMessageDOM('assistant', data.content, false);
+            }
+            state.messages.push({ role: 'assistant', content: data.content });
+            persistState();
             scrollToBottom();
           }
           break;
+
         case 'error':
           showError(data.message || 'Unknown error');
           break;
+
         case 'done':
           break;
       }
     }
   }
 
+  /* ── Send current message ── */
   function sendCurrentMessage() {
     var text = els.textarea.value.trim();
     if (text) {
@@ -413,6 +489,7 @@
     el.style.height = Math.min(el.scrollHeight, 80) + 'px';
   }
 
+  /* ── Listeners ── */
   function setupListeners() {
     if (els.textarea) {
       els.textarea.addEventListener('keydown', function (e) {
@@ -431,85 +508,34 @@
       els.sendBtn.addEventListener('click', sendCurrentMessage);
     }
     if (els.voiceBtn) {
-      els.voiceBtn.addEventListener('click', startVoiceRecording);
+      els.voiceBtn.addEventListener('click', function () {
+        showToast('\uD83C\uDFA4 Voice mode coming soon');
+      });
     }
     if (els.copyDialogBtn) {
-      els.copyDialogBtn.addEventListener('click', window.copyDialog);
+      els.copyDialogBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        window.copyDialog();
+      });
     }
     if (els.copyTraceBtn) {
-      els.copyTraceBtn.addEventListener('click', window.copyTrace);
+      els.copyTraceBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        window.copyTrace();
+      });
     }
     if (els.downloadTraceBtn) {
       els.downloadTraceBtn.addEventListener('click', window.downloadTrace);
     }
   }
 
-  var mediaRecorder = null;
-  var audioChunks = [];
-
-  function startVoiceRecording() {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-      mediaRecorder.stop();
-      return;
-    }
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showError('Voice recording not supported in this browser');
-      return;
-    }
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(function (stream) {
-        audioChunks = [];
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-        mediaRecorder.ondataavailable = function (e) {
-          if (e.data.size > 0) audioChunks.push(e.data);
-        };
-        mediaRecorder.onstop = function () {
-          var tracks = stream.getTracks();
-          for (var i = 0; i < tracks.length; i++) tracks[i].stop();
-          var blob = new Blob(audioChunks, { type: 'audio/webm' });
-          uploadAudio(blob);
-        };
-        mediaRecorder.start();
-        if (els.voiceBtn) els.voiceBtn.classList.add('recording');
-      })
-      .catch(function () {
-        showError('Microphone access denied');
-      });
-  }
-
-  async function uploadAudio(blob) {
-    if (els.voiceBtn) els.voiceBtn.classList.remove('recording');
-    setInputEnabled(false);
-    var msg = '[Transcribing audio\u2026]';
-    var dummyBubble = addMessageDOM('assistant', msg);
-    try {
-      var formData = new FormData();
-      formData.append('file', blob, 'recording.webm');
-      var resp = await fetch('/api/agent/transcribe', { method: 'POST', body: formData });
-      var result = await resp.json();
-      if (result.error) {
-        showError('Recognition error: ' + result.error);
-        dummyBubble.remove();
-        setInputEnabled(true);
-        return;
-      }
-      var text = result.text || '';
-      if (text) {
-        dummyBubble.remove();
-        sendMessage(text);
-      }
-    } catch (err) {
-      showError('Voice upload failed');
-      dummyBubble.remove();
-    }
-    setInputEnabled(true);
-  }
-
+  /* ── Quick chips ── */
   window.aiSendQuick = function (el) {
     var text = el.textContent.replace(/^[^\s]+\s/, '').trim();
     sendMessage(text);
   };
 
+  /* ── Panel toggle ── */
   window.toggleAiPanel = function () {
     if (!els.panel) return;
     els.panel.classList.toggle('Hidden');
@@ -521,13 +547,7 @@
     }
   };
 
-  window.clearChatHistory = function () {
-    if (state.sessionId) {
-      fetch('/api/agent/history?session_id=' + encodeURIComponent(state.sessionId), { method: 'DELETE' }).catch(function () {});
-    }
-    window.clearChat();
-  };
-
+  /* ── Boot ── */
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
@@ -536,6 +556,5 @@
 
   window.addEventListener('beforeunload', function () {
     persistState();
-    saveToServer();
   });
 })();
