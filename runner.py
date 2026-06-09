@@ -47,7 +47,7 @@ async def run_project(project_id: str, input_data: dict[str, Any], queue_item_id
     runs_store.save(run)
 
     api_url = project.integration.api_url or project.config.get("api_url", "")
-    run_endpoint = project.integration.jobs_list_endpoint
+    run_endpoint = project.integration.run_endpoint or project.integration.jobs_list_endpoint
 
     if api_url and run_endpoint:
         try:
@@ -93,7 +93,7 @@ def _clean_payload(project_id: str, payload: dict) -> dict:
         if value == "" or value is None:
             continue
         key_lower = key.lower()
-        if key_lower == "publish_to_telegram" or key_lower == "telegram_enabled" or key_lower == "landscape":
+        if key_lower in ("publish_to_telegram", "telegram_enabled", "landscape", "post_to_telegram"):
             cleaned[key] = value in ("true", "on", "1", "yes", True)
         elif key_lower == "queries":
             if isinstance(value, str) and "," in value:

@@ -23,7 +23,7 @@ from models import (
     ProjectDefaults,
 )
 from registry import load_projects, get_project, get_enabled_jobs, save_project
-from storage import runs_store, schedules_store, profiles_store, publish_requests_store, queue_store
+from storage import runs_store, schedules_store, profiles_store, publish_requests_store, queue_store, content_memory_store
 from runner import run_project
 from scheduler import add_schedule, remove_schedule
 from remote_sync import fetch_remote_jobs, fetch_remote_job_details, sync_run_status, build_merged_runs
@@ -36,6 +36,7 @@ _env = Environment(
 )
 
 import json as _json
+from pathlib import Path
 
 
 def _tojson_unicode(value) -> str:
@@ -138,6 +139,7 @@ async def dashboard_page(request: Request):
     return HTMLResponse(render(
         "dashboard.html", request=request,
         project_cards=project_cards,
+        remote_status_labels=REMOTE_STATUS_LABELS,
     ))
 
 
@@ -222,6 +224,8 @@ async def project_page(request: Request, project_id: str):
     merged = build_merged_runs(project_id, project_runs, remote_snapshot)
     queue_summary = queue_store.get_queue_summary(project_id)
 
+    content_memory_count = len(content_memory_store.filter(project_id=project_id))
+
     return HTMLResponse(render(
         "project.html", request=request, project=project, jobs=jobs,
         runs=project_runs, merged_runs=merged, schedules=schedules,
@@ -229,6 +233,7 @@ async def project_page(request: Request, project_id: str):
         last_sync=remote_snapshot.synced_at if remote_snapshot else None,
         queue_items=queue_items, queue_summary=queue_summary,
         queue_status_labels=QUEUE_STATUS_LABELS,
+        content_memory_count=content_memory_count,
     ))
 
 
@@ -578,16 +583,34 @@ async def create_schedule_form(
     project_id: str = Form(...),
     cron_expression: str = Form(...),
     title: str = Form(""),
-    enabled: bool = Form(True),
+    enabled: str = Form("off"),
 ):
+    is_enabled = enabled in ("on", "true", "1", "yes")
+
+    import re
+    cron_pattern = re.compile(r"^(\*|\d+)([-\/,*\d]*) (\*|\d+)([-\/,*\d]*) (\*|\d+)([-\/,*\d]*) (\*|\d+)([-\/,*\d]*) (\*|\d+)([-\/,*\d]*)$")
+    if not cron_pattern.match(cron_expression):
+        return RedirectResponse(
+            f"/projects/{project_id}?schedule_error=Некорректное+cron-выражение:+{cron_expression}",
+            status_code=303,
+        )
+
     sched = Schedule(
         project_id=project_id,
         cron_expression=cron_expression,
         title=title,
-        enabled=enabled,
+        enabled=is_enabled,
     )
-    add_schedule(sched)
-    return RedirectResponse(f"/projects/{project_id}", status_code=303)
+    try:
+        add_schedule(sched)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(
+            f"/projects/{project_id}?schedule_error=Ошибка+создания+расписания:+{str(e)}",
+            status_code=303,
+        )
+    return RedirectResponse(f"/projects/{project_id}?schedule_ok=Расписание+добавлено", status_code=303)
 
 
 @router.post("/schedules/{schedule_id}/delete", response_class=RedirectResponse)
@@ -689,6 +712,35 @@ async def publish_guide_page(request: Request, platform: str):
         platform=plat,
         platform_label=PLATFORM_LABELS.get(plat, platform),
     ))
+
+
+_PROJECT_ROOT = Path(__file__).parent
+
+
+@router.get("/publishing-guide", response_class=HTMLResponse)
+async def publishing_access_guide_page(request: Request):
+    guide_path = _PROJECT_ROOT / "PUBLISHING_ACCESS_GUIDE.md"
+    if not guide_path.exists():
+        return HTMLResponse("Файл PUBLISHING_ACCESS_GUIDE.md не найден", status_code=404)
+    content = guide_path.read_text(encoding="utf-8")
+    html_content = content.replace("\n", "<br>\n").replace("  ", "&nbsp;&nbsp;")
+    html = f"""<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><title>Publishing Access Guide</title>
+<style>
+  body {{ font-family: -apple-system, sans-serif; background: #eef0f5; color: #1a1a2e; line-height: 1.7; padding: 2rem; max-width: 800px; margin: 0 auto; }}
+  .card {{ background: #fff; border: 1px solid #e2e5ec; border-radius: 16px; padding: 1.5rem 2rem; }}
+  a {{ color: #4f46e5; }}
+  code {{ background: #f3f4f6; padding: .15rem .4rem; border-radius: 6px; font-size: .85em; }}
+  pre {{ background: #f8f9fc; padding: .75rem 1rem; border-radius: 10px; overflow-x: auto; border: 1px solid #e2e5ec; }}
+  h1 {{ font-size: 1.3rem; }}
+  h2 {{ font-size: 1.1rem; margin-top: 1.5rem; }}
+  h3 {{ font-size: .95rem; margin-top: 1.2rem; }}
+  table {{ border-collapse: collapse; width: 100%; font-size: .85rem; }}
+  td, th {{ border: 1px solid #e2e5ec; padding: .4rem .6rem; text-align: left; }}
+  th {{ background: #f3f4f6; font-weight: 600; }}
+</style></head>
+<body><div class="card">{html_content}</div></body></html>"""
+    return HTMLResponse(html)
 
 
 @router.post("/publish/request", response_class=RedirectResponse)
@@ -868,7 +920,6 @@ def _build_publish_profile(data: dict, existing_id: str = "") -> PublishProfile:
         profile.tags_defaults = [t.strip() for t in tags_raw.split(",") if t.strip()]
 
     if data.get("credentials_json"):
-        import json as _json
         try:
             profile.credentials = _json.loads(data["credentials_json"])
         except Exception:

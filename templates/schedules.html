@@ -15,7 +15,7 @@
 <div class="card">
   <div class="table-wrap">
   <table>
-    <tr><th>Расписание</th><th>Проект</th><th>Cron</th><th>Очередь проекта</th><th>Последний запуск</th><th>Статус</th><th></th></tr>
+    <tr><th>Расписание</th><th>Проект</th><th>Cron</th><th>Очередь проекта</th><th>Последний запуск</th><th>Следующий</th><th>Статус</th><th></th></tr>
     {% for s in schedules %}
     <tr>
       <td>
@@ -33,6 +33,7 @@
         {% endif %}
       </td>
       <td style="font-size: .8rem; color: var(--text-muted);">{{ s.last_run_at | moscow_time('%d.%m %H:%M') }}</td>
+      <td style="font-size: .8rem; color: var(--text-muted);">{{ s.next_run_at | moscow_time('%d.%m %H:%M') }}</td>
       <td><span class="tag tag-{{ 'success' if s.enabled else 'pending' }}">{{ 'активно' if s.enabled else 'приостановлено' }}</span></td>
       <td>
         <form action="/schedules/{{ s.schedule_id }}/delete" method="POST" style="display:inline;">

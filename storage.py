@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Generic, TypeVar
 
-from models import Run, Schedule, PublishProfile, PublishRequest, QueueItem
+from models import Run, Schedule, PublishProfile, PublishRequest, QueueItem, ContentRecord
 
 T = TypeVar("T")
 
@@ -128,3 +128,4 @@ schedules_store = FileStore[Schedule]("schedules.json", Schedule)
 profiles_store = FileStore[PublishProfile]("publish_profiles.json", PublishProfile)
 publish_requests_store = FileStore[PublishRequest]("publish_requests.json", PublishRequest)
 queue_store = QueueStore()
+content_memory_store = FileStore[ContentRecord]("content_memory.json", ContentRecord)

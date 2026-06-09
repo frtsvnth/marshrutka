@@ -232,9 +232,13 @@
 {% endif %}
 
 <div class="card">
-  <div class="flex gap-2">
+  <div class="flex gap-2" style="flex-wrap: wrap;">
     <a href="/publish/profiles" class="btn btn-primary">← К профилям</a>
     <a href="/publish/profiles/new" class="btn btn-outline">+ Создать профиль {{ platform_label }}</a>
+  </div>
+  <div style="margin-top: .75rem; font-size: .82rem; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: .75rem;">
+    📖 Полное руководство с пошаговой инструкцией по получению API-доступа:
+    <a href="/publishing-guide" style="color: var(--indigo); font-weight: 500;">Читать PUBLISHING_ACCESS_GUIDE.md</a>
   </div>
 </div>
 

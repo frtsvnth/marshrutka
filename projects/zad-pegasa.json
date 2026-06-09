@@ -1,0 +1,96 @@
+{
+  "project_id": "zad-pegasa",
+  "display_name": "Зад Пегаса",
+  "description": "Конвейер «текст истории → TTS → субтитры → Pexels footage → вертикальный MP4 → Telegram». Превращает текст в вертикальное 9:16 видео для YouTube Shorts / Telegram.",
+  "enabled": true,
+  "input_fields": [
+    {
+      "key": "text",
+      "label": "Текст истории",
+      "type": "textarea",
+      "required": true,
+      "default": null,
+      "placeholder": "Вставьте текст истории...",
+      "options": [],
+      "helper_text": "Полный текст, который будет озвучен и превращён в видео",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
+    },
+    {
+      "key": "tts_mode",
+      "label": "TTS-движок",
+      "type": "select",
+      "required": true,
+      "default": "salutespeech",
+      "placeholder": "",
+      "options": [
+        "salutespeech",
+        "elevenlabs",
+        "test"
+      ],
+      "helper_text": "salutespeech — SberTTS (SSML); elevenlabs — ElevenLabs; test — переиспользует audio-test.wav",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
+    },
+    {
+      "key": "post_to_telegram",
+      "label": "Опубликовать в Telegram",
+      "type": "checkbox",
+      "required": true,
+      "default": null,
+      "placeholder": "",
+      "options": [],
+      "helper_text": "Включено по умолчанию в конфиге сервера. Снять галочку — отключить для этого запуска",
+      "visible": true,
+      "supports_default": true,
+      "deprecated": false
+    }
+  ],
+  "jobs": [
+    {
+      "job_id": "run_pipeline",
+      "title": "Запуск пайплайна",
+      "order": 10,
+      "job_type": "run_pipeline",
+      "enabled": true,
+      "manual_run_allowed": true,
+      "cron_allowed": true,
+      "config": {
+        "api_url": "http://141.136.44.9:8002",
+        "run_endpoint": "/jobs",
+        "status_endpoint": "/jobs/{job_id}"
+      }
+    }
+  ],
+  "publish_targets": [],
+  "integration": {
+    "api_url": "http://141.136.44.9:8002",
+    "integration_type": "api",
+    "run_endpoint": "",
+    "jobs_list_endpoint": "/jobs",
+    "job_detail_endpoint": "/jobs/{job_id}",
+    "job_cancel_endpoint": "/jobs/{job_id}/cancel",
+    "artifacts_endpoint": "/jobs/{job_id}/artifacts/{key}",
+    "auto_sync": true,
+    "last_sync_at": null,
+    "sync_status": "never"
+  },
+  "publish_bindings": [],
+  "config": {
+    "api_url": "http://141.136.44.9:8002",
+    "integration_type": "api"
+  },
+  "defaults": {
+    "input_values": {},
+    "publish_profile_id": "",
+    "queue_title_template": "",
+    "last_used_values": {}
+  },
+  "primary_artifact": {
+    "artifact_key": "final_with_audio",
+    "label": "Финальное видео",
+    "expected_extension": "mp4"
+  }
+}

@@ -5,22 +5,24 @@
   <div class="flex" style="justify-content: space-between; align-items: center;">
     <div>
       <h1>Дашборд</h1>
-      <div class="description">Оперативная сводка: какие проекты требуют внимания, где есть очередь, где проблемы.</div>
+      <div class="description">Оперативный пульт: что требует внимания прямо сейчас. Очереди, ошибки, stale-проекты.</div>
     </div>
-    <a href="/projects/new" class="btn btn-primary">+ Добавить проект</a>
+    <div class="flex gap-1">
+      <a href="/projects" class="btn btn-outline">⊞ Все проекты</a>
+      <a href="/projects/new" class="btn btn-primary">+ Добавить проект</a>
+    </div>
   </div>
 </div>
 
 {% if not project_cards %}
 <div class="card">
-  <div class="empty-state">Пока нет проектов. Нажмите «Добавить проект», чтобы создать первый маршрут.</div>
+  <div class="empty-state">Пока нет проектов. Нажмите «Добавить проект», чтобы создать первый контентный маршрут.</div>
 </div>
 {% endif %}
 
 {% for card in project_cards %}
 {% set p = card.project %}
 {% set qs = card.queue_summary %}
-{% set has_attention = qs.failed > 0 or (qs.total > 0 and qs.queued == 0 and qs.draft > 0) or card.stale_days > 7 %}
 {% set border_color = 'var(--failed-text)' if qs.failed > 0 else 'var(--amber)' if card.stale_days > 7 else 'var(--indigo)' %}
 <div class="card" style="border-left: 4px solid {{ border_color }};">
   <div class="flex" style="justify-content: space-between; align-items: flex-start;">
@@ -66,7 +68,7 @@
       {{ card.last_run.created_at | moscow_time('%d.%m %H:%M') }}
       {% if card.last_run.remote_status.value %}
       <span class="tag tag-sm tag-{{ 'success' if card.last_run.remote_status.value == 'success' else 'running' if card.last_run.remote_status.value in ('running','pending') else 'failed' if card.last_run.remote_status.value == 'failed' else 'pending' }}">
-        {{ card.last_run.remote_status.value }}
+        {{ remote_status_labels.get(card.last_run.remote_status, card.last_run.remote_status.value) }}
       </span>
       {% endif %}
       {% else %}

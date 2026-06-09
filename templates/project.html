@@ -7,6 +7,15 @@
 
 <div class="breadcrumb"><a href="/">Дашборд</a> / {{ project.display_name }}</div>
 
+{% set schedule_ok = request.query_params.get('schedule_ok', '') %}
+{% set schedule_error = request.query_params.get('schedule_error', '') %}
+{% if schedule_ok %}
+<div style="background: var(--success-bg); color: var(--success-text); padding: .5rem .75rem; border-radius: 10px; font-size: .82rem; margin-bottom: 1rem;">{{ schedule_ok }}</div>
+{% endif %}
+{% if schedule_error %}
+<div style="background: var(--failed-bg); color: var(--failed-text); padding: .5rem .75rem; border-radius: 10px; font-size: .82rem; margin-bottom: 1rem;">{{ schedule_error }}</div>
+{% endif %}
+
 {# ── Project header ── #}
 <div class="page-header">
   <div class="flex" style="justify-content: space-between; align-items: center;">
@@ -30,15 +39,15 @@
 </div>
 
 {# ═══════════════════════════════════════════════════════════════ #}
-{# BLOCK 1: QUEUE                                                     #}
+{# BLOCK 1: QUEUE — основной workflow                                #}
 {# ═══════════════════════════════════════════════════════════════ #}
 <div class="card" id="queue" style="border-color: var(--indigo-light);">
   <div class="flex" style="justify-content: space-between; align-items: center;">
     <div class="card-title" style="color: var(--indigo-dark); margin-bottom: 0;">
-      Очередь проекта
+      Очередь запусков
       <span style="font-size: .75rem; font-weight: 400; color: var(--text-light); margin-left: .5rem;">
-        {{ queue_summary.queued }} в очереди · {{ queue_summary.draft }} черновиков · {{ queue_summary.total }} всего
-        {% if queue_summary.failed > 0 %}· <span style="color: var(--failed-text);">{{ queue_summary.failed }} ошибок</span>{% endif %}
+        {{ queue_summary.queued }} готовы · {{ queue_summary.draft }} черновиков · {{ queue_summary.total }} всего
+        {% if queue_summary.failed > 0 %}· <span style="color: var(--failed-text);">{{ queue_summary.failed }} с ошибкой</span>{% endif %}
       </span>
     </div>
     <div class="flex gap-1">
@@ -51,7 +60,10 @@
   </div>
 
   {% if queue_items %}
-  <div style="margin-top: .65rem;">
+  <div style="font-size: .78rem; color: var(--text-muted); margin-top: .25rem; margin-bottom: .5rem;">
+    Элементы очереди запускаются по порядку (сверху вниз). Нажмите на название, чтобы просмотреть/редактировать payload.
+  </div>
+  <div style="margin-top: .5rem;">
   {% for qi in queue_items %}
   {% set qs = qi.status.value %}
   <div class="flex" style="justify-content: space-between; align-items: center; padding: .5rem .65rem; border: 1px solid var(--border); border-radius: 10px; margin-bottom: .3rem; background: var(--surface);">
@@ -75,7 +87,11 @@
     </div>
     <div class="flex gap-1" style="flex-shrink: 0;">
       {% if qi.source.value == 'agent' %}
-      <span class="tag tag-sm tag-remote" style="font-size: .65rem;">agent</span>
+      <span class="tag tag-sm tag-remote" style="font-size: .65rem;">🤖</span>
+      {% elif qi.source.value == 'api' %}
+      <span class="tag tag-sm tag-remote" style="font-size: .65rem;">API</span>
+      {% elif qi.source.value == 'imported' %}
+      <span class="tag tag-sm tag-pending" style="font-size: .65rem;">импорт</span>
       {% endif %}
       {% if qs in ('queued', 'draft', 'failed') %}
       <form action="/projects/{{ project.project_id }}/queue/{{ qi.queue_item_id }}/launch" method="POST" style="display:inline;">
@@ -132,20 +148,23 @@
 </div>
 
 {# ═══════════════════════════════════════════════════════════════ #}
-{# BLOCK 2: QUICK LAUNCH / ADD TO QUEUE                              #}
+{# BLOCK 2: NEW LAUNCH — создать элемент для запуска                  #}
 {# ═══════════════════════════════════════════════════════════════ #}
 <div class="card" id="run-form">
   <div class="flex" style="justify-content: space-between; align-items: center;">
-    <div class="card-title" style="margin-bottom: 0;">Быстрый запуск / Добавить в очередь</div>
+    <div class="card-title" style="margin-bottom: 0;">Новый запуск</div>
     {% set basic = project.config.get('basic_fields', []) %}
     {% if basic and project.input_fields|length > basic|length %}
     <label class="flex" style="font-size: .78rem; color: var(--text-muted); cursor: pointer;">
       <input type="checkbox" id="modeToggle" onchange="toggleAdvancedMode()" style="margin-right: .3rem;">
-      Расширенные
+      Расширенные поля
     </label>
     {% endif %}
   </div>
-  <form action="/projects/{{ project.project_id }}/run" method="POST" style="margin-top: .75rem;">
+  <div style="font-size: .78rem; color: var(--text-muted); margin-bottom: .65rem;">
+    Заполните данные и выберите действие: запустить сейчас, добавить в очередь или сохранить как черновик.
+  </div>
+  <form action="/projects/{{ project.project_id }}/run" method="POST" style="margin-top: .5rem;">
     <input type="hidden" name="_action" value="launch_now" id="formAction">
     {% for field in project.input_fields %}
     {% if field.visible %}
@@ -284,7 +303,7 @@ function toggleAdvancedMode() {
   {% if schedules %}
   <div class="table-wrap">
   <table>
-    <tr><th>Название</th><th>Cron</th><th>Описание</th><th>Статус</th><th>Последний запуск</th><th></th></tr>
+    <tr><th>Название</th><th>Cron</th><th>Описание</th><th>Статус</th><th>Последний запуск</th><th>Следующий</th><th></th></tr>
     {% for s in schedules %}
     <tr>
       <td style="font-size: .83rem;">{{ s.title or s.schedule_id[:12] }}</td>
@@ -292,6 +311,7 @@ function toggleAdvancedMode() {
       <td style="font-size: .78rem; color: var(--text-muted);" id="cronDesc_{{ loop.index }}"></td>
       <td><span class="tag tag-{{ 'success' if s.enabled else 'pending' }}">{{ 'активно' if s.enabled else 'приостановлено' }}</span></td>
       <td style="font-size: .78rem; color: var(--text-muted);">{{ s.last_run_at | moscow_time('%d.%m %H:%M') }}</td>
+      <td style="font-size: .78rem; color: var(--text-muted);">{{ s.next_run_at | moscow_time('%d.%m %H:%M') }}</td>
       <td>
         <form action="/schedules/{{ s.schedule_id }}/delete" method="POST" style="display:inline;">
           <button class="btn btn-danger btn-sm">Удалить</button>
@@ -537,7 +557,30 @@ document.getElementById('runFilters').addEventListener('click', function(e) {
 </div>
 
 {# ═══════════════════════════════════════════════════════════════ #}
-{# BLOCK 6: JOBS / CONFIG (lowest priority)                          #}
+{# BLOCK 6: CONTENT MEMORY / DEDUPE (future)                         #}
+{# ═══════════════════════════════════════════════════════════════ #}
+<details>
+  <summary style="font-size: .82rem; color: var(--text-muted); padding: .5rem 0;">
+    Проверка дублей / история тем
+    {% if content_memory_count > 0 %}
+    <span class="tag tag-sm tag-pending" style="font-size: .65rem;">{{ content_memory_count }} записей</span>
+    {% endif %}
+  </summary>
+  <div class="card">
+    <div class="empty-state">
+      <p>Локальное хранилище использованных тем, заголовков и текстов проекта.</p>
+      <p style="margin-top: .3rem;">В будущих версиях при добавлении в очередь будет проверяться, не запускался ли уже этот текст или похожая тема.</p>
+      {% if content_memory_count == 0 %}
+      <p style="margin-top: .5rem; font-style: italic;">Пока нет записей. Данные будут накапливаться автоматически в следующих обновлениях.</p>
+      {% else %}
+      <p style="margin-top: .5rem;">Записей в хранилище: {{ content_memory_count }}</p>
+      {% endif %}
+    </div>
+  </div>
+</details>
+
+{# ═══════════════════════════════════════════════════════════════ #}
+{# BLOCK 7: JOBS / CONFIG (lowest priority)                          #}
 {# ═══════════════════════════════════════════════════════════════ #}
 <details>
   <summary style="font-size: .82rem; color: var(--text-muted); padding: .5rem 0;">Задачи и конфигурация проекта</summary>

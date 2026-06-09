@@ -163,6 +163,7 @@ class JobDefinition(BaseModel):
 class ProjectIntegration(BaseModel):
     api_url: str = ""
     integration_type: str = "api"
+    run_endpoint: str = ""
     jobs_list_endpoint: str = "/jobs"
     job_detail_endpoint: str = "/jobs/{job_id}"
     job_cancel_endpoint: str = "/jobs/{job_id}/cancel"
@@ -343,6 +344,44 @@ class PublishRequest(BaseModel):
     published_at: datetime | None = None
 
 
+# ── Content Memory / Dedupe (future extension) ──
+# ContentRecord — локальное хранилище для duplicate-aware content memory.
+# НЕ является source of truth для remote jobs, НЕ полноценный CMS.
+# Это local duplicate-awareness layer для operator workflow.
+#
+# Поля спроектированы для будущей проверки:
+# - не было ли уже похожей темы
+# - не использовался ли тот же текст
+# - не запускался ли похожий материал для этого проекта
+#
+# Статус: PLACEHOLDER — модель определена, но не используется.
+# Активное usage будет добавлено в следующих итерациях.
+
+
+class ContentRecordStatus(str, Enum):
+    draft = "draft"
+    used = "used"
+    skipped = "skipped"
+    deprecated = "deprecated"
+
+
+class ContentRecord(BaseModel):
+    record_id: str = Field(default_factory=lambda: f"cr_{uuid.uuid4().hex[:12]}")
+    project_id: str
+    title: str = ""
+    topic_normalized: str = ""
+    source_text_hash: str = ""
+    text_excerpt: str = ""
+    source_url: str = ""
+    queue_item_id: str = ""
+    run_id: str = ""
+    remote_job_id: str = ""
+    status: ContentRecordStatus = ContentRecordStatus.draft
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    matched_record_id: str | None = None
+    match_reason: str = ""
+
+
 # ── Artifact filename resolution ──
 
 PREVIEW_CONTENT_TYPES: dict[str, str] = {
@@ -392,6 +431,11 @@ ARTIFACT_FILENAME_MAP: dict[str, str] = {
     "preview_video": "summary_video.mp4",
     "subtitled_video": "summary_video_subtitled.mp4",
     "avatar_overlay_video": "summary_video_with_avatar.mp4",
+    "zp_audio": "audio.wav",
+    "zp_srt": "srtfile.srt",
+    "zp_final": "final.mp4",
+    "zp_finalwithaudio": "finalwithaudio.mp4",
+    "zp_log": "run.log",
 }
 
 # Project-specific overrides for keys that map differently per project
@@ -401,6 +445,12 @@ PROJECT_ARTIFACT_OVERRIDES: dict[str, dict[str, str]] = {
     },
     "ezhu-ponyatno": {
         "final_video": "summary_video_final.mp4",
+    },
+    "zad-pegasa": {
+        "final_video": "finalwithaudio.mp4",
+        "audio": "audio.wav",
+        "srt": "srtfile.srt",
+        "log": "run.log",
     },
 }
 

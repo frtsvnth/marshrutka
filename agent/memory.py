@@ -337,6 +337,23 @@ class MemoryManager:
                 for p in projects
             )
             parts.append("Текущие проекты в системе:\n" + projects_list)
+
+            project_descriptions = []
+            for p in projects:
+                if p.project_id == "story-to-video":
+                    project_descriptions.append(
+                        "  - story-to-video («Story to Video»): текст новости → TTS → STT → подбор медиа → субтитры → рендер → публикация. API: http://141.136.44.9:8001. Основное поле: news_text. Опции: queries, publish_to_telegram."
+                    )
+                elif p.project_id == "ezhu-ponyatno":
+                    project_descriptions.append(
+                        "  - ezhu-ponyatno («Ежу понятно»): YouTube → транскрипция → LLM summary → TTS → render shorts → субтитры → аватар → финальное видео. API: http://141.136.44.9:8000. Поля: url, speech_rate, voice, landscape, telegram_enabled."
+                    )
+                elif p.project_id == "zad-pegasa":
+                    project_descriptions.append(
+                        "  - zad-pegasa («Зад Пегаса»): конвейер для YouTube/Telegram: текст истории → TTS (SaluteSpeech/ElevenLabs) → субтитры (Whisper alignment) → Pexels footage → вертикальный 9:16 MP4 с субтитрами и аутро. API: http://141.136.44.9:8002. Основное поле ввода: text. Опции: tts_mode (salutespeech/elevenlabs/test), post_to_telegram (bool). Артефакты: audio.wav, srtfile.srt, finalwithaudio.mp4, run.log."
+                    )
+            if project_descriptions:
+                parts.append("Описания проектов:\n" + "\n".join(project_descriptions))
         else:
             parts.append("Текущие проекты в системе:\n  (нет проектов)")
 

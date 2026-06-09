@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -29,7 +29,7 @@ async def execute_scheduled_run(schedule_id: str):
     if not queued:
         print(f"[scheduler] Schedule {schedule_id}: queue is empty, no-op")
         sched.last_run_at = datetime.utcnow()
-        schedules_store.save(sched)
+        schedules_store.save(sched, key_attr="schedule_id")
         return
     candidate = queued[0]
     if not candidate.payload:
@@ -38,7 +38,7 @@ async def execute_scheduled_run(schedule_id: str):
         candidate.updated_at = datetime.utcnow()
         queue_store.save_item(sched.project_id, candidate)
         sched.last_run_at = datetime.utcnow()
-        schedules_store.save(sched)
+        schedules_store.save(sched, key_attr="schedule_id")
         return
     try:
         candidate.status = QueueItemStatus.launching
@@ -60,7 +60,7 @@ async def execute_scheduled_run(schedule_id: str):
         candidate.updated_at = datetime.utcnow()
         queue_store.save_item(sched.project_id, candidate)
         sched.last_run_at = datetime.utcnow()
-        schedules_store.save(sched)
+        schedules_store.save(sched, key_attr="schedule_id")
     except Exception as e:
         candidate.status = QueueItemStatus.failed
         candidate.last_error = f"Scheduled launch failed: {e}"
@@ -68,7 +68,7 @@ async def execute_scheduled_run(schedule_id: str):
         queue_store.save_item(sched.project_id, candidate)
         print(f"[scheduler] Queue item {candidate.queue_item_id} failed: {e}")
         sched.last_run_at = datetime.utcnow()
-        schedules_store.save(sched)
+        schedules_store.save(sched, key_attr="schedule_id")
 
 
 def schedule_job(sched: Schedule):
@@ -82,6 +82,7 @@ def schedule_job(sched: Schedule):
         id=sched.schedule_id,
         replace_existing=True,
     )
+    _persist_next_run(sched)
 
 
 def reload_schedules():
@@ -92,8 +93,18 @@ def reload_schedules():
 
 
 def add_schedule(sched: Schedule):
-    schedules_store.save(sched)
+    schedules_store.save(sched, key_attr="schedule_id")
     schedule_job(sched)
+
+
+def _persist_next_run(sched: Schedule):
+    try:
+        job = scheduler.get_job(sched.schedule_id)
+        if job and job.next_run_time:
+            sched.next_run_at = job.next_run_time.astimezone(timezone.utc).replace(tzinfo=None)
+            schedules_store.save(sched, key_attr="schedule_id")
+    except Exception:
+        pass
 
 
 def remove_schedule(schedule_id: str):
