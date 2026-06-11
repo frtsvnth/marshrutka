@@ -327,11 +327,30 @@
         <span style="font-size: .82rem;">{{ pr.title[:50] or 'без названия' }}</span>
       </div>
       <div class="flex gap-1">
-        <span class="tag tag-{{ 'success' if pr.status == 'published' else 'running' if pr.status == 'pending' else 'pending' }}">
-          {{ {'draft':'черновик','pending':'в обработке','published':'опубликовано','failed':'ошибка'}[pr.status] or pr.status }}
+        <span class="tag tag-{{ 'success' if pr.status == 'published' else 'failed' if pr.status == 'failed' else 'running' if pr.status == 'pending' else 'pending' }}">
+          {{ {'draft':'черновик','pending':'ожидает','published':'опубликовано','failed':'ошибка'}[pr.status] or pr.status }}
         </span>
+        {% if pr.status == 'pending' %}
+        <form action="/publish/execute/{{ pr.request_id }}" method="POST" style="display:inline;" class="execute-form">
+          <button class="btn btn-sm btn-success execute-btn">▶ Выполнить</button>
+        </form>
+        {% endif %}
         {% if pr.published_at %}
         <span style="font-size: .75rem; color: var(--text-muted);">{{ pr.published_at | moscow_time('%H:%M %d.%m') }}</span>
+        {% endif %}
+        {% if pr.result and pr.result.get('video_id') %}
+        <span style="font-size: .75rem; color: var(--success-text);">
+          <a href="https://youtu.be/{{ pr.result.video_id }}" target="_blank" style="color: var(--success-text);">⬈ Смотреть</a>
+        </span>
+        {% endif %}
+        {% if pr.result and pr.result.get('error') %}
+        <span style="font-size: .75rem; color: var(--failed-text); cursor: help;" title="{{ pr.result.error }}">⚠ ошибка</span>
+        {% if pr.result.error|length > 60 %}
+        <details style="font-size: .72rem; color: var(--failed-text); margin-top: .2rem;">
+          <summary>подробнее</summary>
+          <pre style="white-space: pre-wrap; max-width: 400px; overflow-x: auto; background: #fef2f2; padding: .3rem .5rem; border-radius: 6px; margin-top: .2rem;">{{ pr.result.error }}</pre>
+        </details>
+        {% endif %}
         {% endif %}
       </div>
     </div>
@@ -384,7 +403,8 @@
           <option value="private">Приватный</option>
         </select>
       </div>
-      <button type="submit" class="btn btn-success">📤 Отправить на публикацию</button>
+      <div class="form-hint" style="margin-bottom: .5rem;">После создания запроса нажмите «▶ Выполнить», чтобы запустить публикацию.</div>
+      <button type="submit" class="btn btn-success">📤 Создать запрос</button>
     </form>
   </details>
   <script>
@@ -398,6 +418,31 @@
   </script>
 </div>
 {% endif %}
+
+<script>
+document.querySelectorAll('.execute-form').forEach(function(form) {
+  form.addEventListener('submit', function() {
+    var btn = form.querySelector('.execute-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Загрузка…';
+    }
+  });
+});
+</script>
+
+<style>
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
 
 {% set active_remote = remote_s in ('pending', 'running') %}
 {% if active_remote %}

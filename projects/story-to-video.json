@@ -1,6 +1,6 @@
 {
   "project_id": "story-to-video",
-  "display_name": "Story to Video",
+  "display_name": "Истории в видео",
   "description": "Конвейер «текст новости → TTS → STT → поиск медиа → субтитры → рендер → публикация». Превращает новостной текст в вертикальное MP4-видео с голосом за кадром.",
   "enabled": true,
   "input_fields": [
@@ -21,7 +21,7 @@
       "key": "queries",
       "label": "Поисковые запросы (через запятую, опционально)",
       "type": "text",
-      "required": false,
+      "required": true,
       "default": null,
       "placeholder": "Поисковые запросы для подбора медиа",
       "options": [],
@@ -34,12 +34,12 @@
       "key": "publish_to_telegram",
       "label": "Опубликовать в Telegram",
       "type": "checkbox",
-      "required": false,
+      "required": true,
       "default": null,
       "placeholder": "",
       "options": [],
       "helper_text": "",
-      "visible": true,
+      "visible": false,
       "supports_default": true,
       "deprecated": false
     }
@@ -64,6 +64,7 @@
   "integration": {
     "api_url": "http://141.136.44.9:8001",
     "integration_type": "api",
+    "run_endpoint": "",
     "jobs_list_endpoint": "/jobs",
     "job_detail_endpoint": "/jobs/{job_id}",
     "job_cancel_endpoint": "/jobs/{job_id}/cancel",

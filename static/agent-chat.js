@@ -482,6 +482,16 @@
           showError(data.message || 'Unknown error');
           break;
 
+        case 'navigate':
+          var navUrl = data.url;
+          var isReload = data.reload === true;
+          if (isReload || navUrl === 'reload') {
+            window.location.reload();
+          } else if (navUrl) {
+            window.location.href = navUrl;
+          }
+          break;
+
         case 'done':
           break;
       }

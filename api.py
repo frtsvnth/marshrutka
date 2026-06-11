@@ -10,7 +10,10 @@ from registry import load_projects, get_project, save_project
 from scheduler import add_schedule, remove_schedule, reload_schedules
 from storage import runs_store, schedules_store, profiles_store, publish_requests_store, queue_store
 from runner import run_project
-from remote_sync import fetch_remote_jobs, fetch_remote_job_details
+from remote_sync import fetch_remote_jobs, fetch_remote_job_details, fetch_artifact
+
+import youtube_adapter
+from config import YOUTUBE_REDIRECT_URI
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -353,6 +356,142 @@ async def list_publish_requests(run_id: str | None = None):
 @router.post("/publish/requests")
 async def create_publish_request(req: PublishRequest):
     publish_requests_store.save(req, key_attr="request_id")
+    return req
+
+
+# ── YouTube OAuth API ──
+
+
+@router.get("/publish/youtube/oauth/url")
+async def get_youtube_oauth_url(profile_id: str):
+    profile = profiles_store.get(profile_id, "profile_id")
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    if profile.platform != PublishPlatform.youtube:
+        raise HTTPException(400, "Profile is not a YouTube profile")
+
+    client_id = profile.credentials.get("client_id", "")
+    if not client_id:
+        raise HTTPException(400, "No client_id in profile credentials")
+
+    auth_url = youtube_adapter.build_auth_url(
+        client_id=client_id,
+        redirect_uri=YOUTUBE_REDIRECT_URI,
+        state=profile_id,
+    )
+    return {"url": auth_url}
+
+
+@router.get("/publish/youtube/oauth/channels")
+async def get_youtube_pending_channels(profile_id: str):
+    profile = profiles_store.get(profile_id, "profile_id")
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    channels = profile.credentials.get("_pending_channels", [])
+    if not channels:
+        raise HTTPException(400, "No pending channels. Re-authorize the profile.")
+    return {"channels": channels, "profile_id": profile_id}
+
+
+@router.post("/publish/youtube/oauth/select-channel")
+async def select_youtube_channel(body: dict):
+    profile_id = body.get("profile_id", "")
+    channel_id = body.get("channel_id", "")
+    channel_title = body.get("channel_title", "")
+
+    profile = profiles_store.get(profile_id, "profile_id")
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+
+    profile.channel_id = channel_id
+    profile.channel_title = channel_title
+    profile.credentials["selected_channel_id"] = channel_id
+    profile.credentials["selected_channel_title"] = channel_title
+    profile.credentials.pop("_pending_channels", None)
+    profile.is_ready = True
+    profiles_store.save(profile, key_attr="profile_id")
+    return {"ok": True, "profile_id": profile_id}
+
+
+# ── Publish execute ──
+
+
+@router.post("/publish/execute/{request_id}")
+async def execute_publish_request(request_id: str):
+    req = publish_requests_store.get(request_id, "request_id")
+    if not req:
+        raise HTTPException(404, "Publish request not found")
+
+    if req.status not in ("pending", "draft"):
+        raise HTTPException(400, f"Cannot execute request in status: {req.status}")
+
+    profile = profiles_store.get(req.profile_id, "profile_id")
+    if not profile:
+        raise HTTPException(404, "Publish profile not found")
+    if not profile.is_ready:
+        raise HTTPException(400, "Publish profile is not ready")
+
+    run = runs_store.get(req.run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+
+    project = get_project(run.project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    if not run.remote_job_id:
+        raise HTTPException(400, "Run has no remote job id")
+
+    try:
+        artifact_key = project.primary_artifact.artifact_key
+        if req.title:
+            title = req.title
+        else:
+            title = run.input.get("title", run.input.get("news_text", "Video"))[:100]
+
+        description = req.description or ""
+        tags = req.hashtags or []
+
+        privacy = profile.privacy_defaults.get("visibility", req.visibility or "unlisted")
+
+        result = await fetch_artifact(
+            project.integration, run.remote_job_id, artifact_key,
+        )
+        if result is None:
+            raise ValueError(f"Artifact '{artifact_key}' not found")
+
+        video_bytes, _ = result
+
+        if profile.platform == PublishPlatform.youtube:
+            upload_result = await youtube_adapter.upload_video(
+                credentials=profile.credentials,
+                video_bytes=video_bytes,
+                title=title,
+                description=description,
+                tags=tags,
+                privacy_status=privacy,
+            )
+            req.status = "published"
+            req.result = {
+                "video_id": upload_result.get("id", ""),
+                "channel_id": profile.channel_id,
+                "platform": "youtube",
+            }
+        else:
+            req.status = "failed"
+            req.result = {"error": f"Unsupported platform: {profile.platform.value}"}
+
+    except Exception as e:
+        req.status = "failed"
+        req.result = {"error": str(e)}
+
+    req.published_at = __import__("datetime").datetime.utcnow()
+    publish_requests_store.save(req, key_attr="request_id")
+
+    run.publish_status = req.status
+    run.publish_profile_id = req.profile_id
+    runs_store.save(run)
+
     return req
 
 

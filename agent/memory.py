@@ -45,6 +45,7 @@ BASE_SYSTEM_PROMPT = """
 - Анализировать состояние проектов через analyze_projects
 - Читать и редактировать файлы проекта через файловые инструменты
 - Создавать followup-задачи
+- **Discover и использовать dynamic app capabilities** — через discover_project_capabilities, list_project_actions, invoke_project_action, refresh_capability_registry
 
 ВАЖНО:
 - Когда нужно выполнить действие — используй инструменты.
@@ -60,6 +61,27 @@ BASE_SYSTEM_PROMPT = """
 - Перед редактированием файлов сначала используй propose_file_patch, покажи изменения, и только после подтверждения применяй apply_file_patch.
 - Не выдумывай ссылки. Используй только реальные результаты из инструментов.
 - Если пользователь хочет получить рекомендации по проектам — используй analyze_projects.
+
+ДИНАМИЧЕСКИЕ ВОЗМОЖНОСТИ (capability discovery):
+- Ты работаешь не только с заранее прописанными инструментами, но и с dynamically discovered app capabilities.
+- Если пользователь просит операционное действие внутри Marshrutka (publish, enqueue, launch, retry, delete, schedule, edit), сначала проверь:
+  1) configured tools (обычный вызов инструментов),
+  2) discovered actions через discover_project_capabilities,
+  3) project bindings и routes,
+  4) UI actions (формы, кнопки на страницах проектов).
+- Если действие существует в UI или backend — считай это потенциально доступной возможностью.
+- Если ты уже прочитал код, конфиг или историю запусков — НЕ говори, что «у тебя нет доступа».
+- Если ты не можешь выполнить действие напрямую, используй capability discovery, чтобы объяснить найденные возможности.
+- Если пользователь просит «сделай как я могу нажать на экране» — активно ищи UI forms, routes, кнопки и пытайся использовать их как app actions.
+
+GIT-ВОРКФЛОУ (работа с кодом проекта):
+- После любого изменения файлов (apply_file_patch, update_config, propose_file_patch) СПРОСИ пользователя: «Всё ли правильно? Отправлять изменения в GitHub?»
+- Если пользователь подтверждает:
+  1) вызови git_status — покажи что будет закоммичено
+  2) вызови git_commit_push с описанием изменений — сначала без confirm=True (preview), после подтверждения — с confirm=True
+- commit message должна быть осмысленной: что именно сделано, зачем.
+- Не коммить и не пушить без явного подтверждения пользователя.
+- Если git push упал — покажи ошибку и предложи исправить.
 """
 
 
@@ -354,6 +376,10 @@ class MemoryManager:
                     )
             if project_descriptions:
                 parts.append("Описания проектов:\n" + "\n".join(project_descriptions))
+
+            capability_summary = self._build_capability_summary(projects)
+            if capability_summary:
+                parts.append(capability_summary)
         else:
             parts.append("Текущие проекты в системе:\n  (нет проектов)")
 
@@ -374,6 +400,48 @@ class MemoryManager:
             parts.append(pm_text)
 
         return "\n\n".join(parts)
+
+    def _build_capability_summary(self, projects: list) -> str:
+        try:
+            from agent.capabilities import get_registry
+            registry = get_registry()
+            data = registry.get_capabilities()
+            actions = data.get("actions", [])
+            if not actions:
+                return ""
+            project_ids = {p.project_id for p in projects}
+            by_project: dict[str, list[str]] = {}
+            for a in actions:
+                pid = a.get("project_id") or ""
+                if pid == "{project_id}" or pid in project_ids:
+                    pass
+                elif pid:
+                    pass
+                else:
+                    pid = "_global"
+                by_project.setdefault(pid, []).append(f"{a.get('label', a['action_id'])} [{a.get('kind', '?')}]")
+            lines = ["Discovered app capabilities (from capability registry):"]
+            for pid in sorted(by_project.keys()):
+                if pid == "_global":
+                    continue
+                acts = by_project[pid]
+                if pid == "{project_id}":
+                    lines.append(f"  Маршруты проектов (параметризованные):")
+                else:
+                    pname = next((p.display_name for p in projects if p.project_id == pid), pid)
+                    lines.append(f"  {pname} ({pid}):")
+                for act in acts[:4]:
+                    lines.append(f"    - {act}")
+            if by_project.get("_global"):
+                acts = by_project["_global"]
+                lines.append(f"  Глобальные:")
+                for act in acts[:3]:
+                    lines.append(f"    - {act}")
+            if actions:
+                lines.append(f"\nВсего обнаружено {len(actions)} actions. Используй discover_project_capabilities для полного сканирования.")
+            return "\n".join(lines)
+        except Exception:
+            return ""
 
     def remember_fact(self, key: str, value: str) -> dict:
         self.user_facts.add_fact(key, value)

@@ -1,7 +1,7 @@
 # Marshrutka — архитектура и эксплуатация
 
 > Personal-use orchestration cockpit для контентных pipeline-проектов.
-> Дата: 2026-06-09 | Версия: 0.7 (UX/Schedules/Content Memory Foundation)
+> Дата: 2026-06-10 | Версия: 0.8 (YouTube Publishing)
 
 ---
 
@@ -493,17 +493,69 @@ Primary artifact:
 - `ProjectPublishBinding` — привязка профиля к проекту
 - `PublishRequest` — запрос на публикацию конкретного run
 - **Primary artifact** — определяет, какой artifact считается основным media payload
+- **`youtube_adapter.py`** — адаптер публикации для YouTube Data API v3
 
 PublishRequest по умолчанию использует primary artifact.
-В будущем publish adapters будут получать уже resolved artifact reference.
+
+### YouTube publishing flow
+
+1. Создаётся PublishProfile с платформой `youtube`
+2. В credentials сохраняются `client_id` и `client_secret`
+3. Пользователь проходит OAuth 2.0 flow (prompt=consent + access_type=offline)
+4. После OAuth получается список каналов через `youtube.channels.list(mine=true)`
+5. Привязывается конкретный канал (channel_id + channel_title)
+6. При публикации: `POST /publish/execute/{request_id}` скачивает primary artifact с сервера проекта и загружает в YouTube через `videos.insert` (resumable upload)
+
+### OAuth endpoints
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| API | `GET /api/publish/youtube/oauth/url?profile_id=` | Получить URL для OAuth |
+| API | `GET /api/publish/youtube/oauth/channels?profile_id=` | Получить список каналов после OAuth |
+| API | `POST /api/publish/youtube/oauth/select-channel` | Выбрать канал |
+| API | `POST /api/publish/execute/{request_id}` | Выполнить публикацию |
+| UI | `GET /publish/youtube/auth/{profile_id}` | Начать OAuth (редирект в Google) |
+| UI | `GET /publish/youtube/callback` | Callback OAuth |
+| UI | `POST /publish/youtube/select-channel` | Выбор канала (форма) |
+| UI | `POST /publish/execute/{request_id}` | Выполнить публикацию (форма) |
+
+### Publish flow (двухшаговый)
+
+Публикация состоит из двух шагов:
+
+**Шаг 1: Создание запроса** (`POST /publish/request`)
+- Пользователь выбирает профиль, заполняет заголовок/описание
+- Создаётся `PublishRequest` со статусом `pending`
+- Видео ещё не загружается
+
+**Шаг 2: Выполнение** (`POST /publish/execute/{request_id}`)
+- На странице run появляется кнопка **▶ Выполнить**
+- Кнопка одноразовая: при нажатии блокируется и показывает спиннер
+- Marshrutka скачивает primary artifact с сервера проекта через `fetch_artifact`
+- Создаёт resumable upload сессию к `https://www.googleapis.com/upload/youtube/v3/videos`
+- Загружает видео, обновляет `PublishRequest.status` (published / failed) и `PublishRequest.result`
+- При ошибке под кнопкой появляется блок **подробнее** с текстом ошибки от YouTube API
+
+### Управление credentials в профиле
+
+Поле `credentials` в PublishProfile — свободный JSON-объект. При сохранении формы:
+- Если введён валидный JSON — он сохраняется как есть
+- Если JSON невалиден — сохраняется в `{"_raw_input": "...", "_parse_error": true}`, в форме показывается красное предупреждение
+- Если в credentials есть ключ `raw` (старый формат) — форма показывает его содержимое для исправления
+
+### Несколько каналов на одном Google-аккаунте
+
+Marshrutka использует `prompt=consent`, поэтому каждый OAuth-заход выдаёт новый refresh token.
+Каждый профиль хранит собственный refresh_token и selected_channel_id.
 
 ### UI
 
-- **Профили:** `/publish/profiles` — CRUD, фильтр по платформам, статус готовности
+- **Профили:** `/publish/profiles` — CRUD, фильтр по платформам, статус готовности (готов / требуется OAuth / выберите канал / требует настройки)
 - **Guides:** `/publish/guide/{platform}` — пошаговая инструкция для каждой платформы
 - **Публикация из run:** после успешного pipeline, на странице run details
   - Показывается какой artifact будет опубликован
   - Если primary artifact не определён — предупреждение
+  - Кнопка «Создать запрос» → кнопка «Выполнить»
 
 ---
 
@@ -633,7 +685,8 @@ STT_HTTP_URL=http://141.136.44.9:9000/transcribe
 - **Schedules: queue-driven** — убрано поле `input` из Schedule, schedules работают через очередь
 - **Primary artifact: project-level** — override на уровне queue item опционален
 - **Fallback: single video heuristic** — только если ровно один video artifact
-- **Publish adapters — stub** — интерфейс готов, API-заглушка до реализации
+- **YouTube publish adapter** — реализован (youtube_adapter.py), OAuth + videos.insert
+- **Остальные платформы (Instagram/VK/Rutube)** — UI есть, адаптеров нет
 - **Нет multi-tenancy** — один оператор
 - **Нет vault-системы** — credentials в JSON профиля + env-backed secrets
 - **Нет event-platform** — scheduling только cron
@@ -879,7 +932,10 @@ class ContentRecord(BaseModel):
 
 ## 20. Known limitations
 
-- **Publish adapters** — stub. Реальная загрузка через API не реализована ни для одной платформы.
+- **YouTube публикация** — реализована (OAuth + videos.insert). Поддерживается загрузка primary artifact.
+- **Instagram, VK, Rutube** — UI есть, адаптеров нет. Публикация работает только для YouTube.
+- **YouTube OAuth refresh token** — может истечь при неиспользовании > 6 месяцев.
+- **YouTube Data API квота** — 10 000 единиц/день. Одна загрузка ~1600 единиц.
 - **Отмена запуска** — endpoint `POST /jobs/{id}/cancel` определён в модели, но UI-кнопка не реализована.
 - **Primary artifact fallback** — только simple heuristic. Если видео несколько, fallback не срабатывает.
 - **Queue reorder** — position-based, а не drag-and-drop.

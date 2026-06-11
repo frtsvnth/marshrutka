@@ -17,13 +17,22 @@ from agent.operator_tools import (
     list_auto_tasks,
     delete_runs,
 )
+from agent.capabilities import (
+    discover_project_capabilities as _discover_project_capabilities,
+    list_project_actions as _list_project_actions,
+    invoke_project_action as _invoke_project_action,
+    refresh_capability_registry as _refresh_capability_registry,
+    fetch_json_url as _fetch_json_url,
+)
+
+import subprocess
 
 from registry import load_projects
 from storage import runs_store, schedules_store
 from runner import run_project
 from scheduler import add_schedule
 from models import Schedule
-from config import moscow_time
+from config import BASE_DIR, moscow_time
 
 
 def count_words(text: str) -> dict:
@@ -142,6 +151,147 @@ def get_schedules(project_id: str = "") -> dict:
         return {"error": str(e)}
 
 
+async def discover_project_capabilities(project_id: str = "") -> dict:
+    try:
+        pid = project_id.strip() or None
+        return await _discover_project_capabilities(pid)
+    except Exception as e:
+        return {"error": f"Capability discovery failed: {e}"}
+
+
+async def list_project_actions(project_id: str) -> dict:
+    try:
+        return await _list_project_actions(project_id)
+    except Exception as e:
+        return {"error": f"Failed to list project actions: {e}"}
+
+
+async def invoke_project_action(action_id: str, params: dict = {}) -> dict:
+    try:
+        return await _invoke_project_action(action_id, params)
+    except Exception as e:
+        return {"error": f"Failed to invoke action: {e}"}
+
+
+async def refresh_capability_registry() -> dict:
+    try:
+        return await _refresh_capability_registry()
+    except Exception as e:
+        return {"error": f"Failed to refresh registry: {e}"}
+
+
+async def fetch_json_url(url: str) -> dict:
+    try:
+        return await _fetch_json_url(url)
+    except Exception as e:
+        return {"error": f"Failed to fetch JSON URL: {e}"}
+
+
+def _git_run(*args: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git"] + list(args),
+            capture_output=True, text=True, cwd=BASE_DIR, timeout=30,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+        return result.stdout.strip()
+    except FileNotFoundError:
+        raise RuntimeError("git not found")
+
+
+def git_status() -> dict:
+    try:
+        status_text = _git_run("status", "--short")
+        if not status_text:
+            return {"status": "clean", "message": "Рабочая директория чиста, нет изменений"}
+        lines = status_text.split("\n")
+        staged = []
+        unstaged = []
+        untracked = []
+        for line in lines:
+            if not line.strip():
+                continue
+            code = line[:2]
+            path = line[3:]
+            if code == "??":
+                untracked.append(path)
+            elif " " not in code.strip():
+                staged.append({"path": path, "status": code.strip()})
+            else:
+                unstaged.append({"path": path, "status": code.strip()})
+        branch = _git_run("rev-parse", "--abbrev-ref", "HEAD")
+        return {
+            "status": "dirty",
+            "branch": branch,
+            "staged": staged,
+            "unstaged": unstaged,
+            "untracked": untracked,
+            "total_changed": len(staged) + len(unstaged) + len(untracked),
+            "preview": status_text,
+        }
+    except RuntimeError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"Git status failed: {e}"}
+
+
+def git_commit_push(message: str, description: str = "", confirm: bool = False) -> dict:
+    try:
+        branch = _git_run("rev-parse", "--abbrev-ref", "HEAD")
+
+        status = git_status()
+        if status.get("status") == "clean":
+            return {"error": "Нет изменений для коммита"}
+
+        if not confirm:
+            return {
+                "status": "preview",
+                "branch": branch,
+                "message": message,
+                "description": description,
+                "preview": status.get("preview", ""),
+                "total_changed": status.get("total_changed", 0),
+                "instruction": "Вызови с confirm=True для коммита и пуша.",
+            }
+
+        _git_run("add", "-A")
+        full_message = message + ("\n\n" + description if description else "")
+        _git_run("commit", "-m", full_message)
+        _git_run("push")
+        commit_hash = _git_run("rev-parse", "--short", "HEAD")
+        return {
+            "status": "pushed",
+            "branch": branch,
+            "commit": commit_hash,
+            "message": message,
+            "result": f"Изменения закоммичены ({commit_hash}) и отправлены в {branch}.",
+        }
+    except RuntimeError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"Git commit/push failed: {e}"}
+
+
+def navigate_to(url: str) -> dict:
+    if not url.startswith(("/", "http://", "https://")):
+        return {"error": "URL must be absolute path (e.g. /projects/story-to-video) or full URL"}
+    return {
+        "_navigation": url,
+        "url": url,
+        "status": "navigating",
+        "message": "Перенаправляю на страницу...",
+    }
+
+
+def reload_page() -> dict:
+    return {
+        "_navigation": "reload",
+        "status": "reloading",
+        "message": "Обновляю страницу...",
+    }
+
+
 TOOLS: dict[str, callable] = {
     "count_words": count_words,
     "get_projects": get_projects,
@@ -163,6 +313,15 @@ TOOLS: dict[str, callable] = {
     "create_followup_task": create_followup_task,
     "list_auto_tasks": list_auto_tasks,
     "delete_runs": delete_runs,
+    "git_status": git_status,
+    "git_commit_push": git_commit_push,
+    "navigate_to": navigate_to,
+    "reload_page": reload_page,
+    "discover_project_capabilities": discover_project_capabilities,
+    "list_project_actions": list_project_actions,
+    "invoke_project_action": invoke_project_action,
+    "refresh_capability_registry": refresh_capability_registry,
+    "fetch_json_url": fetch_json_url,
 }
 
 TOOL_DEFINITIONS: list[ToolDefinition] = [
@@ -558,6 +717,125 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                 }
             },
             "required": ["query"],
+        },
+    ),
+    ToolDefinition(
+        name="git_status",
+        description="Показать текущее состояние git-репозитория: какие файлы изменены, добавлены, не отслеживаются. Используй перед git_commit_push, чтобы показать пользователю что будет закоммичено.",
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+    ),
+    ToolDefinition(
+        name="git_commit_push",
+        description="Закоммитить и запушить изменения в GitHub. Сначала вызови без confirm=True — покажет preview изменений. После подтверждения пользователя вызови с confirm=True. ВАЖНО: используй только после того, как пользователь подтвердил, что изменения правильные.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "Короткое описание коммита на русском или английском (что именно сделано)",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Подробное описание коммита (опционально)",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Подтверждение коммита и пуша. Сначала вызови без confirm, покажи preview пользователю, после подтверждения — с confirm=True",
+                },
+            },
+            "required": ["message"],
+        },
+    ),
+    ToolDefinition(
+        name="discover_project_capabilities",
+        description="Просканировать приложение и найти все доступные возможности (routes, publish bindings, UI actions, функции). Если указан project_id — только для этого проекта. Используй когда пользователь просит сделать действие, которого нет среди твоих обычных инструментов: опубликовать, отправить в очередь, запустить, удалить, ретрайнуть и т.д.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "ID проекта для сканирования (опционально). Если не указан — сканируется всё приложение.",
+                },
+            },
+        },
+    ),
+    ToolDefinition(
+        name="list_project_actions",
+        description="Показать нормализованный список исполнимых действий для проекта. Возвращает actions, сгруппированные по intent (publish, enqueue, launch, retry, delete, edit, schedule).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string",
+                    "description": "ID проекта",
+                },
+            },
+            "required": ["project_id"],
+        },
+    ),
+    ToolDefinition(
+        name="invoke_project_action",
+        description="Попытаться выполнить найденное действие проекта. Для endpoint — делает HTTP-вызов. Для ui_form — эмулирует POST. Для destructive действий (publish/delete) требуется подтверждение.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "action_id": {
+                    "type": "string",
+                    "description": "ID действия из registry (например, 'route.api.projects.project_id.publish.publish_youtube.post' или 'story-to-video.publish_youtube')",
+                },
+                "params": {
+                    "type": "object",
+                    "description": "Параметры для вызова: может содержать project_id, body, form_data, query_params",
+                },
+            },
+            "required": ["action_id"],
+        },
+    ),
+    ToolDefinition(
+        name="refresh_capability_registry",
+        description="Форсировать полный рескан capability registry — пересканировать routes, проекты, UI actions, код. Используй когда могли появиться новые возможности (после изменений в конфигах, после патчей файлов, при добавлении новых endpoint-ов).",
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+    ),
+    ToolDefinition(
+        name="fetch_json_url",
+        description="Загрузить JSON по URL. В отличие от fetch_url, этот инструмент понимает content-type и парсит JSON в structured объект. Используй для загрузки openapi.json, json-конфигов, API-ответов.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "URL JSON-документа (например, http://localhost:9090/openapi.json)",
+                },
+            },
+            "required": ["url"],
+        },
+    ),
+    ToolDefinition(
+        name="navigate_to",
+        description="Перенаправить пользователя на указанную страницу в приложении. Используй когда нужно показать результат: после запуска пайплайна — на страницу запуска (/runs/{run_id}), после редактирования файла — обновить страницу через reload_page, после создания расписания — на проект и т.д.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "URL для перенаправления. Абсолютный путь (например, /projects/story-to-video) или полный URL.",
+                },
+            },
+            "required": ["url"],
+        },
+    ),
+    ToolDefinition(
+        name="reload_page",
+        description="Обновить страницу браузера пользователя. Используй после apply_file_patch, update_config или других изменений, которые должны отобразиться сразу.",
+        parameters={
+            "type": "object",
+            "properties": {},
         },
     ),
 ]

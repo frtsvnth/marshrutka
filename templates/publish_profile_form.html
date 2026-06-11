@@ -55,9 +55,40 @@
     <div class="card-title">Учётные данные</div>
     <div class="form-group">
       <label class="form-label" for="credentials_json">Credentials (JSON)</label>
-      <textarea id="credentials_json" name="credentials_json" placeholder='{"api_key": "...", "client_id": "..."}'>{{ profile.credentials | tojson_unicode if profile and profile.credentials else '' }}</textarea>
-      <div class="form-hint">Учётные данные в формате JSON. Для YouTube — OAuth client JSON. Для других платформ — API-ключи или токены.</div>
+      <textarea id="credentials_json" name="credentials_json" placeholder='{"client_id": "...", "client_secret": "..."}'>{% if profile and profile.credentials %}{% if profile.credentials.get('_raw_input') %}{{ profile.credentials._raw_input }}{% elif profile.credentials.get('raw') %}{{ profile.credentials.raw }}{% else %}{{ profile.credentials | tojson_unicode }}{% endif %}{% endif %}</textarea>
+      <div class="form-hint">
+        Учётные данные в формате JSON.
+        Для YouTube: <code>{"client_id": "...", "client_secret": "..."}</code> (из Google Cloud Console, OAuth 2.0 Client ID → веб-приложение).
+        После сохранения можно пройти OAuth-авторизацию.
+      </div>
+      {% if profile and profile.credentials.get('_parse_error') %}
+      <div style="color: var(--failed-text); font-size: .82rem; margin-top: .3rem;">⚠ JSON не распознан. Проверьте синтаксис: все ключи должны быть в двойных кавычках.</div>
+      {% endif %}
     </div>
+    {% if profile and profile.platform.value == 'youtube' %}
+    <div class="form-group" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+      <div style="font-size: .85rem; margin-bottom: .5rem;">
+        <strong>Статус OAuth:</strong>
+        {% if profile.is_ready and profile.credentials.get('refresh_token') %}
+          <span class="guide-status-ready">✓ авторизован</span>
+          {% if profile.channel_title %}
+          <span style="margin-left: .5rem; font-size: .82rem;">Канал: {{ profile.channel_title }}</span>
+          {% endif %}
+        {% elif profile.credentials.get('_pending_channels') %}
+          <span class="guide-status-manual">требует выбора канала</span>
+        {% else %}
+          <span class="guide-status-manual">не авторизован</span>
+        {% endif %}
+      </div>
+      {% if profile.credentials.get('client_id') and profile.credentials.get('client_secret') %}
+      <a href="/publish/youtube/auth/{{ profile.profile_id }}" class="btn btn-outline" style="border-color: #fee2e2; color: #991b1b;">
+        🔑 Авторизовать YouTube
+      </a>
+      {% else %}
+      <div style="font-size: .78rem; color: var(--text-muted);">Сначала сохраните client_id и client_secret в поле Credentials JSON выше.</div>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 
   <div class="card">

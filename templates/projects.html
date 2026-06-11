@@ -29,6 +29,9 @@
         <a href="/projects/{{ p.project_id }}" style="font-size: .95rem; font-weight: 600; color: var(--text);">{{ p.display_name }}</a>
         <span class="tag tag-{{ 'success' if p.enabled else 'pending' }}" style="font-size: .65rem;">{{ 'активен' if p.enabled else 'отключён' }}</span>
       </div>
+      {% if p.description %}
+      <p style="color: var(--text-muted); font-size: .82rem; margin-top: .15rem; max-width: 500px;">{{ p.description }}</p>
+      {% endif %}
       <div class="flex gap-2 mt-1" style="font-size: .75rem; color: var(--text-muted); flex-wrap: wrap;">
         <span>{{ p.input_fields | selectattr('visible', 'equalto', true) | list | length }} полей в форме</span>
         {% if p.integration.api_url %}

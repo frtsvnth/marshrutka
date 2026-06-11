@@ -15,6 +15,7 @@ from agent.models import (
     build_openai_tools,
     execute_tool,
 )
+from agent.capabilities import CapabilityRegistry, OperationalIntentAnalyzer, get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,7 @@ async def run_harness(
     yield SSEEvent(type="message_start")
 
     final_content = ""
+    pending_navigation: str | None = None
 
     for step in range(max_steps):
         msg = await call_llm(messages, tools=TOOL_DEFS, stream=False)
@@ -165,6 +167,7 @@ async def run_harness(
 
         if not tool_calls:
             final_content = content or ""
+            messages.append({"role": "assistant", "content": final_content})
             break
 
         if tool_calls:
@@ -193,6 +196,10 @@ async def run_harness(
                 "duration_ms": duration_ms,
             })
 
+            nav_url = result.get("_navigation") if isinstance(result, dict) else None
+            if nav_url:
+                pending_navigation = nav_url
+
             messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result_str})
     else:
         if not final_content:
@@ -209,6 +216,9 @@ async def run_harness(
 
     suggestions = []
     if final_content and final_content != "(агент не смог сформировать ответ)":
+        improved = _enhance_response_if_needed(final_content, user_message, memory_manager)
+        if improved:
+            final_content = improved
         suggestions = await generate_suggestions(messages, final_content)
 
     event_data: dict[str, Any] = {"content": final_content}
@@ -216,8 +226,84 @@ async def run_harness(
         event_data["suggestions"] = suggestions
     yield SSEEvent(type="message_done", data=event_data)
 
+    if pending_navigation:
+        is_reload = pending_navigation == "reload"
+        yield SSEEvent(type="navigate", data={
+            "url": pending_navigation,
+            "reload": is_reload,
+        })
+
     session_memory.add_message("user", user_message)
     session_memory.add_message("assistant", final_content)
+
+
+def _enhance_response_if_needed(final_content: str, user_message: str, memory_manager: MemoryManager) -> str | None:
+    refusal_patterns = [
+        "у меня нет доступа",
+        "не вижу историю",
+        "не могу работать с проектом",
+        "не могу выполнить это действие",
+        "недостаточно прав",
+        "не могу получить доступ",
+        "я не могу",
+        "у меня нет возможности",
+    ]
+    msg_lower = final_content.lower()
+    is_refusal = any(p in msg_lower for p in refusal_patterns)
+
+    analyzer = OperationalIntentAnalyzer()
+    analysis = analyzer.analyze(user_message)
+
+    if not analysis.get("is_operational"):
+        return None
+
+    capabilities = get_registry().get_capabilities()
+    actions = capabilities.get("actions", [])
+    matched = analysis.get("matched_actions", [])
+    intent = analysis.get("detected_intent", "")
+    project_id = analysis.get("detected_project_id", "")
+
+    if not is_refusal and (matched or actions):
+        return None
+
+    if is_refusal and not actions:
+        refreshed = get_registry().refresh()
+        actions = refreshed.get("actions", [])
+        if project_id:
+            matched = [a for a in actions if a.get("project_id") == project_id or "{project_id}" in str(a.get("path", ""))]
+        else:
+            matched = actions[:5]
+
+    if not matched:
+        return None
+
+    parts = []
+
+    if project_id:
+        parts.append(f"Я проверил приложение — проект «{project_id}» существует, у меня есть к нему доступ.")
+
+    parts.append(f"После сканирования capability registry я обнаружил следующие релевантные действия ({intent}):")
+
+    for action in matched[:5]:
+        aid = action.get("action_id", "")
+        label = action.get("label", aid)
+        kind = action.get("kind", "")
+        path = action.get("path", "")
+        method = action.get("method", "")
+        parts.append(f"  • {label} [{kind}] — {method} {path} (id: {aid})")
+
+    executable = [a for a in matched if a.get("kind") in ("endpoint",) and method in ("POST", "PUT")]
+    if executable:
+        parts.append(f"\nНашёл {len(executable)} потенциально исполнимых action-ов. Я могу попробовать вызвать их через invoke_project_action после вашего подтверждения.")
+    else:
+        parts.append("\nАвтоматический вызов пока не настроен для этих actions. Но я могу:")
+        parts.append("  1. Сделать patch, чтобы обернуть нужное действие в исполнимый tool")
+        parts.append("  2. Показать точный manual call (curl/http)")
+        parts.append("  3. Попробовать безопасный invoke после подтверждения")
+
+    parts.append("\n(эта информация получена через dynamic capability discovery — я не просто отказываю, а ищу возможности)")
+
+    return "\n".join(parts)
 
 
 def _summarize_result(result: dict) -> str:

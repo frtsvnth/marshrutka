@@ -20,212 +20,102 @@
 {% if platform.value == 'youtube' %}
 
 <div class="card">
-  <div class="card-title">YouTube Shorts — настройка публикации</div>
+  <div class="card-title">YouTube — настройка публикации</div>
   <div class="guide-section">
     <h3>1. Что понадобится</h3>
     <ul>
       <li>Аккаунт Google (YouTube-канал)</li>
-      <li>Проект в Google Cloud Console</li>
-      <li>Включённый YouTube Data API v3</li>
-      <li>OAuth 2.0 Client ID (Desktop или Web)</li>
+      <li>Проект в Google Cloud Console с включённым YouTube Data API v3</li>
+      <li>OAuth 2.0 Client ID (тип «Веб-приложение»)</li>
     </ul>
   </div>
   <div class="guide-section">
-    <h3>2. Какие доступы нужны</h3>
-    <ul>
-      <li><span class="guide-status-ready">✓ готово</span> YouTube Data API — загрузка видео</li>
-      <li><span class="guide-status-soon">скоро</span> YouTube Analytics API — сбор статистики</li>
-      <li><span class="guide-status-manual">вручную</span> OAuth consent screen — настройка в Google Cloud</li>
-    </ul>
+    <h3>2. Настройка Google Cloud Console</h3>
+    <ol>
+      <li>Откройте <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
+      <li>Создайте проект → <strong>APIs & Services</strong> → <strong>Library</strong> → включите <strong>YouTube Data API v3</strong></li>
+      <li>Перейдите в <strong>OAuth consent screen</strong>, выберите <strong>External</strong>, заполните обязательные поля, добавьте свой email в <strong>Test users</strong></li>
+      <li>Перейдите в <strong>Credentials</strong> → <strong>Create Credentials</strong> → <strong>OAuth client ID</strong></li>
+      <li>Тип: <strong>Web application</strong></li>
+      <li>В <strong>Authorized redirect URIs</strong> добавьте: <code>http://localhost:9090/publish/youtube/callback</code></li>
+      <li>Сохраните → скачайте JSON</li>
+    </ol>
   </div>
   <div class="guide-section">
-    <h3>3. Поля профиля</h3>
-    <ul>
-      <li><strong>Название профиля</strong> — для удобства (например «YouTube — основной»)</li>
-      <li><strong>Credentials JSON</strong> — содержимое файла client_secret.json из Google Cloud</li>
-      <li><strong>Канал</strong> — название и ID (заполняются автоматически после привязки)</li>
-      <li><strong>Шаблоны</strong> — заголовок, описание, теги для Shorts</li>
-      <li><strong>Видимость</strong> — public / unlisted / private</li>
-    </ul>
+    <h3>3. Создание профиля в Marshrutka</h3>
+    <ol>
+      <li>Откройте <strong>/publish/profiles/new</strong></li>
+      <li>Выберите платформу <strong>YouTube</strong></li>
+      <li>Название: <code>YouTube — Зад Пегаса</code> (или другое)</li>
+      <li>В поле <strong>Credentials JSON</strong> вставьте: <code>{"client_id": "xxx.apps.googleusercontent.com", "client_secret": "GOCSPX-..."}</code></li>
+      <li>Сохраните профиль</li>
+    </ol>
   </div>
   <div class="guide-section">
-    <h3>4. Как проверить готовность</h3>
-    <p>После заполнения профиля на странице профилей появится статус <span class="guide-status-ready">✓ готов к использованию</span>. Если credentials не заполнены или некорректны — будет <span class="guide-status-manual">требует настройки</span>.</p>
+    <h3>4. OAuth-авторизация</h3>
+    <ol>
+      <li>Откройте страницу редактирования профиля</li>
+      <li>Нажмите <strong>🔑 Авторизовать YouTube</strong></li>
+      <li>Подтвердите доступ в Google</li>
+      <li>Если у аккаунта один канал — профиль готов. Если несколько — выберите нужный канал</li>
+      <li>Статус сменится на <span class="guide-status-ready">✓ готов к публикации</span></li>
+    </ol>
   </div>
   <div class="guide-section">
     <h3>5. Привязка к проекту</h3>
-    <p>На странице редактирования проекта выберите разрешённые профили публикации из списка. Укажите профиль по умолчанию.</p>
+    <p>На странице редактирования проекта выберите профиль в разделе <strong>Publish profiles</strong>.</p>
   </div>
   <div class="guide-section">
-    <h3>6. Запуск публикации</h3>
-    <p>После успешного завершения pipeline на странице запуска нажмите «Опубликовать». Выберите профиль, при необходимости отредактируйте заголовок/описание и подтвердите.</p>
+    <h3>6. Публикация</h3>
+    <ol>
+      <li>Запустите pipeline</li>
+      <li>На странице запуска (после успеха) нажмите <strong>📤 Создать запрос</strong></li>
+      <li>Нажмите <strong>▶ Выполнить</strong></li>
+      <li>Видео загрузится в YouTube</li>
+    </ol>
   </div>
   <div class="guide-section">
-    <h3>7. Что поддерживается</h3>
-    <ul>
-      <li><span class="guide-status-ready">✓ готово</span> Интерфейс профилей и настройки</li>
-      <li><span class="guide-status-ready">✓ готово</span> Привязка профилей к проектам</li>
-      <li><span class="guide-status-soon">скоро</span> Автоматическая OAuth-авторизация</li>
-      <li><span class="guide-status-soon">скоро</span> Реальная загрузка видео через API</li>
-      <li><span class="guide-status-manual">вручную</span> Настройка OAuth consent screen в Google Cloud</li>
-    </ul>
+    <h3>7. Несколько каналов на одном Google-аккаунте</h3>
+    <p>Marshrutka использует <code>prompt=consent</code>, поэтому каждый OAuth-заход даёт отдельный refresh_token. Вы можете авторизовать 3 разных профиля для 3 разных каналов на одной учётной записи:</p>
+    <ol>
+      <li>Создайте профиль «YouTube — Зад Пегаса» → авторизуйте → выберите канал 1</li>
+      <li>Создайте профиль «YouTube — Ежу Понятно» → авторизуйте → выберите канал 2</li>
+      <li>Создайте профиль «YouTube — Сапоги-сандалики» → авторизуйте → выберите канал 3</li>
+    </ol>
+  </div>
+  <div class="guide-section">
+    <h3>8. Приватность по умолчанию</h3>
+    <p>В настройках профиля можно выбрать видимость: <strong>public</strong>, <strong>unlisted</strong> или <strong>private</strong>.</p>
   </div>
 </div>
 
 {% elif platform.value == 'instagram' %}
 
 <div class="card">
-  <div class="card-title">Instagram Reels — настройка публикации</div>
-  <div class="guide-section">
-    <h3>1. Что понадобится</h3>
-    <ul>
-      <li>Аккаунт Instagram (профессиональный или creator)</li>
-      <li>Связанная Facebook-страница</li>
-      <li>Приложение в Meta for Developers</li>
-      <li>Instagram Graph API доступ</li>
-    </ul>
-  </div>
-  <div class="guide-section">
-    <h3>2. Какие доступы нужны</h3>
-    <ul>
-      <li><span class="guide-status-soon">скоро</span> Instagram Graph API — публикация Reels</li>
-      <li><span class="guide-status-manual">вручную</span> Настройка приложения в Meta for Developers</li>
-      <li><span class="guide-status-manual">вручную</span> Получение долгоживущего access_token</li>
-    </ul>
-  </div>
-  <div class="guide-section">
-    <h3>3. Поля профиля</h3>
-    <ul>
-      <li><strong>Название профиля</strong> — например «Instagram — Reels»</li>
-      <li><strong>Credentials JSON</strong> — access_token и app_id</li>
-      <li><strong>Аккаунт</strong> — Instagram business account ID</li>
-      <li><strong>Шаблоны</strong> — подпись, хештеги для Reels</li>
-    </ul>
-  </div>
-  <div class="guide-section">
-    <h3>4. Как проверить готовность</h3>
-    <p>После заполнения базовых полей статус сменится на «готов». Полноценная публикация через API появится позже.</p>
-  </div>
-  <div class="guide-section">
-    <h3>5. Привязка к проекту</h3>
-    <p>На странице редактирования проекта добавьте Instagram-профиль в список разрешённых.</p>
-  </div>
-  <div class="guide-section">
-    <h3>6. Запуск публикации</h3>
-    <p>В настоящее время публикация в Instagram — в режиме «скоро». Интерфейс готов, API-адаптер будет добавлен в одном из следующих обновлений.</p>
-  </div>
-  <div class="guide-section">
-    <h3>7. Что поддерживается</h3>
-    <ul>
-      <li><span class="guide-status-ready">✓ готово</span> Интерфейс профилей и настройки</li>
-      <li><span class="guide-status-ready">✓ готово</span> UI для создания профиля Instagram</li>
-      <li><span class="guide-status-soon">скоро</span> API-адаптер для публикации Reels</li>
-      <li><span class="guide-status-manual">вручную</span> Настройка Meta-приложения и токенов</li>
-    </ul>
+  <div class="card-title">Instagram Reels</div>
+  <div style="color: var(--text-muted); font-size: .85rem;">
+    <p>API-адаптер для Instagram пока не реализован. Профили Instagram можно создавать, но публикация через Marshrutka не работает.</p>
+    <p style="margin-top: .5rem;">Используйте YouTube для автоматической публикации.</p>
   </div>
 </div>
 
 {% elif platform.value == 'vk_video' %}
 
 <div class="card">
-  <div class="card-title">VK Видео — настройка публикации</div>
-  <div class="guide-section">
-    <h3>1. Что понадобится</h3>
-    <ul>
-      <li>Аккаунт ВКонтакте</li>
-      <li>Standalone-приложение VK (созданное в dev.vk.com)</li>
-      <li>Access token с правами video</li>
-      <li>ID сообщества или пользователя для публикации</li>
-    </ul>
-  </div>
-  <div class="guide-section">
-    <h3>2. Какие доступы нужны</h3>
-    <ul>
-      <li><span class="guide-status-soon">скоро</span> VK API video.save — загрузка клипов</li>
-      <li><span class="guide-status-manual">вручную</span> Создание приложения на dev.vk.com</li>
-      <li><span class="guide-status-manual">вручную</span> Получение access_token (implicit flow)</li>
-    </ul>
-  </div>
-  <div class="guide-section">
-    <h3>3. Поля профиля</h3>
-    <ul>
-      <li><strong>Название профиля</strong> — например «VK — Клипы»</li>
-      <li><strong>Credentials JSON</strong> — access_token и app_id</li>
-      <li><strong>ID сообщества</strong> — отрицательное число для группы</li>
-      <li><strong>Шаблоны</strong> — название и описание для клипов</li>
-    </ul>
-  </div>
-  <div class="guide-section">
-    <h3>4. Как проверить готовность</h3>
-    <p>Профиль считается готовым, если указан access_token. Полноценная загрузка видео через VK API будет добавлена позже.</p>
-  </div>
-  <div class="guide-section">
-    <h3>5. Привязка к проекту</h3>
-    <p>Добавьте VK-профиль в проект на странице редактирования.</p>
-  </div>
-  <div class="guide-section">
-    <h3>6. Запуск публикации</h3>
-    <p>UI готов. API-адаптер для VK Video будет реализован в ближайших обновлениях.</p>
-  </div>
-  <div class="guide-section">
-    <h3>7. Что поддерживается</h3>
-    <ul>
-      <li><span class="guide-status-ready">✓ готово</span> Интерфейс профилей VK</li>
-      <li><span class="guide-status-ready">✓ готово</span> UI для настройки</li>
-      <li><span class="guide-status-soon">скоро</span> API video.save + video.get</li>
-      <li><span class="guide-status-manual">вручную</span> Создание приложения и токен</li>
-    </ul>
+  <div class="card-title">VK Видео</div>
+  <div style="color: var(--text-muted); font-size: .85rem;">
+    <p>API-адаптер для VK Видео пока не реализован. Профили VK можно создавать, но публикация через Marshrutka не работает.</p>
+    <p style="margin-top: .5rem;">Используйте YouTube для автоматической публикации.</p>
   </div>
 </div>
 
 {% elif platform.value == 'rutube' %}
 
 <div class="card">
-  <div class="card-title">Rutube — настройка публикации</div>
-  <div class="guide-section">
-    <h3>1. Что понадобится</h3>
-    <ul>
-      <li>Аккаунт на Rutube</li>
-      <li>API-ключ Rutube (получить в настройках канала)</li>
-      <li>ID канала на Rutube</li>
-    </ul>
-  </div>
-  <div class="guide-section">
-    <h3>2. Какие доступы нужны</h3>
-    <ul>
-      <li><span class="guide-status-soon">скоро</span> Rutube API — загрузка видео</li>
-      <li><span class="guide-status-manual">вручную</span> Получение API-ключа в личном кабинете</li>
-    </ul>
-  </div>
-  <div class="guide-section">
-    <h3>3. Поля профиля</h3>
-    <ul>
-      <li><strong>Название профиля</strong> — например «Rutube — Shorts»</li>
-      <li><strong>Credentials JSON</strong> — api_key</li>
-      <li><strong>Канал</strong> — ID канала Rutube</li>
-      <li><strong>Шаблоны</strong> — название и описание</li>
-    </ul>
-  </div>
-  <div class="guide-section">
-    <h3>4. Как проверить готовность</h3>
-    <p>Статус готовности изменится после указания API-ключа. Адаптер Rutube находится в разработке.</p>
-  </div>
-  <div class="guide-section">
-    <h3>5. Привязка к проекту</h3>
-    <p>На странице редактирования проекта выберите профиль Rutube из списка.</p>
-  </div>
-  <div class="guide-section">
-    <h3>6. Запуск публикации</h3>
-    <p>UI готов. API-интеграция Rutube будет добавлена в одном из следующих обновлений.</p>
-  </div>
-  <div class="guide-section">
-    <h3>7. Что поддерживается</h3>
-    <ul>
-      <li><span class="guide-status-ready">✓ готово</span> Интерфейс профилей Rutube</li>
-      <li><span class="guide-status-ready">✓ готово</span> UI для настройки</li>
-      <li><span class="guide-status-soon">скоро</span> API-адаптер</li>
-      <li><span class="guide-status-manual">вручную</span> Получение API-ключа</li>
-    </ul>
+  <div class="card-title">Rutube</div>
+  <div style="color: var(--text-muted); font-size: .85rem;">
+    <p>API-адаптер для Rutube пока не реализован. Профили Rutube можно создавать, но публикация через Marshrutka не работает.</p>
+    <p style="margin-top: .5rem;">Используйте YouTube для автоматической публикации.</p>
   </div>
 </div>
 
@@ -237,8 +127,7 @@
     <a href="/publish/profiles/new" class="btn btn-outline">+ Создать профиль {{ platform_label }}</a>
   </div>
   <div style="margin-top: .75rem; font-size: .82rem; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: .75rem;">
-    📖 Полное руководство с пошаговой инструкцией по получению API-доступа:
-    <a href="/publishing-guide" style="color: var(--indigo); font-weight: 500;">Читать PUBLISHING_ACCESS_GUIDE.md</a>
+    📖 <a href="/publishing-guide" style="color: var(--indigo); font-weight: 500;">Руководство по настройке публикации (PUBLISHING_ACCESS_GUIDE.md)</a>
   </div>
 </div>
 

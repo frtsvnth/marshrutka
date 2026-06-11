@@ -45,10 +45,16 @@
     </div>
     <div class="profile-meta">
       <div>
-        {% if profile.is_ready %}
-        <span class="guide-status-ready">✓ готов к использованию</span>
+        {% if profile.is_ready and profile.credentials.get('refresh_token') %}
+          <span class="guide-status-ready">✓ готов к публикации</span>
+        {% elif profile.platform.value == 'youtube' and profile.credentials.get('_pending_channels') %}
+          <span class="guide-status-manual">выберите канал</span>
+        {% elif profile.is_ready and not profile.credentials.get('refresh_token') and profile.platform.value == 'youtube' %}
+          <span class="guide-status-manual">требует OAuth</span>
+        {% elif profile.is_ready %}
+          <span class="guide-status-ready">✓ готов к использованию</span>
         {% else %}
-        <span class="guide-status-manual">требует настройки</span>
+          <span class="guide-status-manual">требует настройки</span>
         {% endif %}
       </div>
       {% if profile.channel_title %}

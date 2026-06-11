@@ -28,6 +28,9 @@ from runner import run_project
 from scheduler import add_schedule, remove_schedule
 from remote_sync import fetch_remote_jobs, fetch_remote_job_details, sync_run_status, build_merged_runs
 
+import youtube_adapter
+from config import YOUTUBE_REDIRECT_URI
+
 router = APIRouter(tags=["ui"])
 _env = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
@@ -747,11 +750,19 @@ async def publishing_access_guide_page(request: Request):
 async def create_publish_request_form(request: Request):
     form = await request.form()
     data = dict(form)
+    profile_id = data.get("profile_id", "")
+    platform_str = data.get("platform", "")
+    if not platform_str and profile_id:
+        profile = profiles_store.get(profile_id, "profile_id")
+        if profile:
+            platform_str = profile.platform.value
+    if not platform_str:
+        platform_str = "youtube"
     req = PublishRequest(
         run_id=data.get("run_id", ""),
         project_id=data.get("project_id", ""),
-        profile_id=data.get("profile_id", ""),
-        platform=PublishPlatform(data.get("platform", "youtube")),
+        profile_id=profile_id,
+        platform=PublishPlatform(platform_str),
         title=data.get("title", ""),
         description=data.get("description", ""),
         hashtags=[h.strip() for h in data.get("hashtags", "").split(",") if h.strip()],
@@ -765,6 +776,236 @@ async def create_publish_request_form(request: Request):
         run.publish_status = "pending"
         run.publish_profile_id = req.profile_id
         runs_store.save(run)
+
+    return RedirectResponse(f"/runs/{req.run_id}", status_code=303)
+
+
+# ── YouTube OAuth UI ──
+
+
+@router.get("/publish/youtube/auth/{profile_id}", response_class=RedirectResponse)
+async def youtube_auth_start(profile_id: str):
+    profile = profiles_store.get(profile_id, "profile_id")
+    if not profile:
+        return HTMLResponse("Профиль не найден", status_code=404)
+
+    client_id = profile.credentials.get("client_id", "")
+    if not client_id:
+        return HTMLResponse(
+            "В профиле не указан client_id. Сначала сохраните client_id и client_secret в поле Credentials JSON.",
+            status_code=400,
+        )
+
+    auth_url = youtube_adapter.build_auth_url(
+        client_id=client_id,
+        redirect_uri=YOUTUBE_REDIRECT_URI,
+        state=profile_id,
+    )
+    return RedirectResponse(auth_url, status_code=302)
+
+
+def _simple_page(title: str, body: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><title>{title}</title>
+<style>
+body {{ font-family: -apple-system, sans-serif; background: #eef0f5; color: #1a1a2e; line-height: 1.6; padding: 2rem; }}
+.card {{ background: #fff; border: 1px solid #e2e5ec; border-radius: 16px; padding: 1.5rem 2rem; max-width: 600px; margin: 2rem auto; }}
+h2 {{ font-size: 1.1rem; margin-bottom: .75rem; }}
+p {{ font-size: .88rem; color: #6b7280; margin-bottom: .5rem; }}
+.btn {{ display: inline-flex; align-items: center; padding: .5rem 1.1rem; border-radius: 10px; font-size: .85rem; background: #4f46e5; color: #fff; text-decoration: none; margin-top: .5rem; }}
+</style></head><body><div class="card">{body}</div></body></html>"""
+
+
+@router.get("/publish/youtube/callback", response_class=HTMLResponse)
+async def youtube_auth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    if error:
+        return HTMLResponse(_simple_page(
+            "Ошибка авторизации",
+            f"<h2>Ошибка авторизации</h2><p>{error}</p><a href='/publish/profiles' class='btn'>К профилям</a>",
+        ))
+
+    profile = profiles_store.get(state, "profile_id")
+    if not profile:
+        return HTMLResponse("Профиль не найден", status_code=404)
+
+    client_id = profile.credentials.get("client_id", "")
+    client_secret = profile.credentials.get("client_secret", "")
+    if not client_id or not client_secret:
+        return HTMLResponse("В профиле не указаны client_id/client_secret", status_code=400)
+
+    try:
+        token_data = await youtube_adapter.exchange_code(
+            client_id=client_id,
+            client_secret=client_secret,
+            code=code,
+            redirect_uri=YOUTUBE_REDIRECT_URI,
+        )
+    except Exception as e:
+        return HTMLResponse(f"Ошибка обмена кода: {e}", status_code=400)
+
+    import time
+    profile.credentials["access_token"] = token_data.get("access_token", "")
+    profile.credentials["refresh_token"] = token_data.get("refresh_token", "")
+    profile.credentials["token_uri"] = youtube_adapter.TOKEN_URL
+    profile.credentials["expires_at"] = time.time() + token_data.get("expires_in", 3600)
+
+    try:
+        channels = await youtube_adapter.get_channels(token_data.get("access_token", ""))
+    except Exception as e:
+        return HTMLResponse(f"Ошибка получения списка каналов: {e}", status_code=400)
+
+    if not channels:
+        return HTMLResponse(
+            "Не найдено ни одного YouTube-канала. Убедитесь, что у аккаунта есть канал.",
+            status_code=400,
+        )
+
+    if len(channels) == 1:
+        ch = channels[0]
+        cid = ch.get("id", "")
+        ctitle = ch.get("snippet", {}).get("title", "")
+        profile.channel_id = cid
+        profile.channel_title = ctitle
+        profile.credentials["selected_channel_id"] = cid
+        profile.credentials["selected_channel_title"] = ctitle
+        profile.is_ready = True
+        profiles_store.save(profile, key_attr="profile_id")
+        return HTMLResponse(_simple_page(
+            "Авторизация успешна",
+            f"<h2>YouTube авторизация успешна</h2><p>Канал: <strong>{ctitle}</strong></p><p>Профиль «{profile.display_name}» готов к использованию.</p><a href='/publish/profiles' class='btn'>К профилям</a>",
+        ))
+
+    profile.credentials["_pending_channels"] = [
+        {
+            "id": ch.get("id", ""),
+            "title": ch.get("snippet", {}).get("title", ""),
+        }
+        for ch in channels
+    ]
+    profiles_store.save(profile, key_attr="profile_id")
+    return HTMLResponse(_simple_page(
+        "Выберите канал",
+        _render_channel_selection(state, channels),
+    ))
+
+
+def _render_channel_selection(profile_id: str, channels: list) -> str:
+    cards = "".join(
+        f"""
+        <div style="cursor:pointer;padding:.75rem;margin-bottom:.5rem;border:1px solid #e2e5ec;border-radius:12px;"
+             onclick="selectChannel('{ch.get("id", "")}', '{ch.get("snippet", {}).get("title", "")}')">
+            <div style="font-weight:600;">{ch.get("snippet", {}).get("title", "—")}</div>
+            <div style="font-size:.82rem;color:#6b7280;">ID: {ch.get("id", "")[:20]}…</div>
+        </div>
+        """ for ch in channels
+    )
+
+    return f"""
+    <h2>Выберите канал</h2>
+    <p style="margin-bottom:1rem;">Аккаунт имеет несколько каналов. Выберите, к какому привязать этот профиль.</p>
+    <div id="channelList">{cards}</div>
+    <form id="channelForm" action="/publish/youtube/select-channel" method="POST" style="display:none;">
+        <input type="hidden" name="profile_id" value="{profile_id}">
+        <input type="hidden" name="channel_id" id="selChannelId" value="">
+        <input type="hidden" name="channel_title" id="selChannelTitle" value="">
+    </form>
+    <a href='/publish/profiles' style="display:inline-block;padding:.5rem 1.1rem;border-radius:10px;border:1px solid #e2e5ec;color:#6b7280;text-decoration:none;margin-top:1rem;font-size:.85rem;">Отмена</a>
+    <script>
+    function selectChannel(id, title) {{
+        document.getElementById('selChannelId').value = id;
+        document.getElementById('selChannelTitle').value = title;
+        document.getElementById('channelForm').submit();
+    }}
+    </script>
+    """
+
+
+@router.post("/publish/youtube/select-channel", response_class=RedirectResponse)
+async def youtube_select_channel_form(request: Request):
+    form = await request.form()
+    profile_id = form.get("profile_id", "")
+    channel_id = form.get("channel_id", "")
+    channel_title = form.get("channel_title", "")
+
+    profile = profiles_store.get(profile_id, "profile_id")
+    if not profile:
+        return RedirectResponse("/publish/profiles", status_code=303)
+
+    profile.channel_id = channel_id
+    profile.channel_title = channel_title
+    profile.credentials["selected_channel_id"] = channel_id
+    profile.credentials["selected_channel_title"] = channel_title
+    profile.credentials.pop("_pending_channels", None)
+    profile.is_ready = True
+    profiles_store.save(profile, key_attr="profile_id")
+    return RedirectResponse("/publish/profiles", status_code=303)
+
+
+# ── Publish execute UI ──
+
+
+@router.post("/publish/execute/{request_id}", response_class=RedirectResponse)
+async def execute_publish_request_form(request_id: str):
+    req = publish_requests_store.get(request_id, "request_id")
+    if not req:
+        return HTMLResponse("Publish request not found", status_code=404)
+
+    if req.status not in ("pending", "draft"):
+        return RedirectResponse(f"/runs/{req.run_id}", status_code=303)
+
+    profile = profiles_store.get(req.profile_id, "profile_id")
+    if not profile or not profile.is_ready:
+        req.status = "failed"
+        req.result = {"error": "Profile not ready"}
+        publish_requests_store.save(req, key_attr="request_id")
+        return RedirectResponse(f"/runs/{req.run_id}", status_code=303)
+
+    run = runs_store.get(req.run_id)
+    project = get_project(run.project_id) if run else None
+    if not run or not project or not run.remote_job_id:
+        req.status = "failed"
+        req.result = {"error": "Run or project not found"}
+        publish_requests_store.save(req, key_attr="request_id")
+        return RedirectResponse(f"/runs/{req.run_id}", status_code=303)
+
+    try:
+        artifact_key = project.primary_artifact.artifact_key
+        title = req.title or run.input.get("title", run.input.get("news_text", "Video"))[:100]
+        description = req.description or ""
+        tags = req.hashtags or []
+        privacy = profile.privacy_defaults.get("visibility", req.visibility or "unlisted")
+
+        from remote_sync import fetch_artifact
+        result = await fetch_artifact(project.integration, run.remote_job_id, artifact_key)
+        if result is None:
+            raise ValueError(f"Artifact '{artifact_key}' not found")
+
+        video_bytes, _ = result
+        upload_result = await youtube_adapter.upload_video(
+            credentials=profile.credentials,
+            video_bytes=video_bytes,
+            title=title,
+            description=description,
+            tags=tags,
+            privacy_status=privacy,
+        )
+
+        req.status = "published"
+        req.result = {
+            "video_id": upload_result.get("id", ""),
+            "channel_id": profile.channel_id,
+            "platform": "youtube",
+        }
+    except Exception as e:
+        req.status = "failed"
+        req.result = {"error": str(e)}
+
+    req.published_at = datetime.utcnow()
+    publish_requests_store.save(req, key_attr="request_id")
+
+    run.publish_status = req.status
+    run.publish_profile_id = req.profile_id
+    runs_store.save(run)
 
     return RedirectResponse(f"/runs/{req.run_id}", status_code=303)
 
@@ -898,15 +1139,13 @@ def _build_project(form_data: dict, fields: list[ProjectInputField], existing_id
 
 
 def _build_publish_profile(data: dict, existing_id: str = "") -> PublishProfile:
-    profile_id = existing_id or ""
     platform_str = data.get("platform", "youtube")
     try:
         platform = PublishPlatform(platform_str)
     except ValueError:
         platform = PublishPlatform.youtube
 
-    profile = PublishProfile(
-        profile_id=profile_id,
+    profile_kwargs = dict(
         display_name=data.get("display_name", ""),
         platform=platform,
         enabled=data.get("enabled") != "off",
@@ -914,16 +1153,23 @@ def _build_publish_profile(data: dict, existing_id: str = "") -> PublishProfile:
         channel_id=data.get("channel_id", ""),
         notes=data.get("notes", ""),
     )
+    if existing_id:
+        profile_kwargs["profile_id"] = existing_id
+    profile = PublishProfile(**profile_kwargs)
 
     tags_raw = data.get("tags_defaults", "")
     if tags_raw:
         profile.tags_defaults = [t.strip() for t in tags_raw.split(",") if t.strip()]
 
     if data.get("credentials_json"):
-        try:
-            profile.credentials = _json.loads(data["credentials_json"])
-        except Exception:
-            profile.credentials = {"raw": data["credentials_json"]}
+        raw = data["credentials_json"].strip()
+        if raw.startswith("{"):
+            try:
+                profile.credentials = _json.loads(raw)
+            except Exception:
+                profile.credentials = {"_raw_input": raw, "_parse_error": True}
+        else:
+            profile.credentials = {"_raw_input": raw, "_parse_error": True}
 
     profile.privacy_defaults = {
         "visibility": data.get("visibility", "unlisted"),

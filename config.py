@@ -1,6 +1,9 @@
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -12,11 +15,14 @@ PROJECTS_DIR.mkdir(exist_ok=True)
 
 HOST = "0.0.0.0"
 PORT = 9090
+
+YOUTUBE_REDIRECT_URI = os.environ.get(
+    "YOUTUBE_REDIRECT_URI",
+    f"http://localhost:{PORT}/publish/youtube/callback",
+)
 STORY_TO_VIDEO_URL = "http://141.136.44.9:8001"
 EZHU_PONYATNO_URL = "http://141.136.44.9:8000"
 
-import os
-from dotenv import load_dotenv
 load_dotenv()
 
 ROUTERAI_BASE_URL = os.environ.get("ROUTERAI_BASE_URL", "https://routerai.ru/api/v1")

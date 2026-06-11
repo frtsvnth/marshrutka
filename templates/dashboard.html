@@ -38,13 +38,7 @@
         {% if card.stale_days > 7 %}
         <span class="tag tag-cancelled" style="font-size: .72rem;">⏳ нет запусков {{ card.stale_days }} дн.</span>
         {% endif %}
-        {% if qs.queued > 0 %}
-        <span class="tag tag-running" style="font-size: .72rem;">{{ qs.queued }} готовы к запуску</span>
-        {% endif %}
       </div>
-      {% if p.description %}
-      <p style="color: var(--text-muted); font-size: .82rem; margin-top: .15rem; max-width: 500px;">{{ p.description[:200] }}{% if p.description|length > 200 %}…{% endif %}</p>
-      {% endif %}
     </div>
   </div>
 

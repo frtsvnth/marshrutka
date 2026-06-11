@@ -3,7 +3,7 @@
 **Панковый раннер контент-маршрутов.**  
 Минималистичный project runner для контентных пайплайнов: проекты, ordered jobs, runs, cron и публикация из одного окна + AI-агент Маршал в правой панели.
 
-Marshrutka — это лёгкий раннер для контентных проектов. Он хранит проекты, их входные формы, ordered job-цепочки, статусы run'ов и расписания, а потом довозит результат до YouTube через отдельный publish-job. Встроенный AI-агент помогает писать тексты, анализировать проекты, управлять расписаниями, искать информацию и редактировать файлы.
+Marshrutka — это лёгкий раннер для контентных проектов. Он хранит проекты, их входные формы, ordered job-цепочки, статусы run'ов и расписания, а потом довозит результат до YouTube через встроенный publish adapter с OAuth 2.0. Встроенный AI-агент помогает писать тексты, анализировать проекты, управлять расписаниями, искать информацию и редактировать файлы.
 
 ---
 
@@ -26,6 +26,7 @@ ROUTERAI_API_KEY=sk-your-key
 ROUTERAI_MODEL=deepseek/deepseek-v4-flash
 SERPAPI_API_KEY=your_serpapi_key     # опционально
 STT_HTTP_URL=http://.../transcribe   # опционально
+YOUTUBE_REDIRECT_URI=http://localhost:9090/publish/youtube/callback  # для OAuth, по умолчанию localhost:9090
 ```
 
 ---
@@ -76,6 +77,10 @@ STT_HTTP_URL=http://.../transcribe   # опционально
 | `POST` | `/api/schedules` | Создать расписание |
 | `DELETE` | `/api/schedules/{id}` | Удалить расписание |
 | `GET` | `/api/health` | Проверка здоровья |
+| `GET` | `/api/publish/youtube/oauth/url?profile_id=` | URL для OAuth YouTube |
+| `GET` | `/api/publish/youtube/oauth/channels?profile_id=` | Список каналов после OAuth |
+| `POST` | `/api/publish/youtube/oauth/select-channel` | Выбрать канал |
+| `POST` | `/api/publish/execute/{request_id}` | Выполнить публикацию |
 
 ### AI-агент Маршал
 
