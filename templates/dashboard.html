@@ -14,6 +14,40 @@
   </div>
 </div>
 
+{% set ns = namespace(total_projects=0, total_queued=0, total_failed=0, recent_runs=0, success_runs=0) %}
+{% for card in project_cards %}
+  {% set ns.total_projects = ns.total_projects + 1 %}
+  {% set qs = card.queue_summary %}
+  {% set ns.total_queued = ns.total_queued + qs.queued %}
+  {% set ns.total_failed = ns.total_failed + qs.failed %}
+  {% if card.last_run and card.last_run.created_at %}
+    {% set ns.recent_runs = ns.recent_runs + 1 %}
+    {% if card.last_run.remote_status and card.last_run.remote_status.value == 'success' %}
+      {% set ns.success_runs = ns.success_runs + 1 %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+{% set success_rate = (ns.success_runs * 100 // ns.recent_runs) if ns.recent_runs > 0 else 0 %}
+
+<div class="kpi-strip">
+  <div class="kpi-card kpi-neutral">
+    <div class="kpi-value">{{ ns.total_projects }}</div>
+    <div class="kpi-label">Проектов</div>
+  </div>
+  <div class="kpi-card kpi-running">
+    <div class="kpi-value">{{ ns.total_queued }}</div>
+    <div class="kpi-label">В очереди</div>
+  </div>
+  <div class="kpi-card kpi-{{ 'success' if ns.total_failed == 0 else 'failed' }}">
+    <div class="kpi-value">{{ ns.total_failed }}</div>
+    <div class="kpi-label">С ошибкой</div>
+  </div>
+  <div class="kpi-card kpi-{{ 'success' if success_rate >= 80 else 'failed' }}">
+    <div class="kpi-value">{{ success_rate }}%</div>
+    <div class="kpi-label">Успешных запусков</div>
+  </div>
+</div>
+
 {% if not project_cards %}
 <div class="card">
   <div class="empty-state">Пока нет проектов. Нажмите «Добавить проект», чтобы создать первый контентный маршрут.</div>
@@ -24,6 +58,9 @@
 {% set p = card.project %}
 {% set qs = card.queue_summary %}
 {% set border_color = 'var(--failed-text)' if qs.failed > 0 else 'var(--amber)' if card.stale_days > 7 else 'var(--indigo)' %}
+{% set total = qs.queued + qs.draft + qs.failed %}
+{% set progress_pct = (qs.queued * 100 // total) if total > 0 else 0 %}
+{% set progress_class = 'success' if (qs.failed == 0 and qs.queued == 0) else 'running' if qs.queued > 0 else 'failed' if qs.failed > 0 else 'pending' %}
 <div class="card" style="border-left: 4px solid {{ border_color }};">
   <div class="flex" style="justify-content: space-between; align-items: flex-start;">
     <div style="flex: 1;">
@@ -38,9 +75,19 @@
         {% if card.stale_days > 7 %}
         <span class="tag tag-cancelled" style="font-size: .72rem;">⏳ нет запусков {{ card.stale_days }} дн.</span>
         {% endif %}
+        {% if card.last_run and card.last_run.remote_status and card.last_run.remote_status.value == 'success' %}
+        <span class="tag tag-success" style="font-size: .72rem;">✓ готов</span>
+        {% endif %}
       </div>
     </div>
   </div>
+
+  {% set lr = card.last_run %}
+  {% if lr and lr.remote_status %}
+  <div class="progress-bar">
+    <div class="fill {{ progress_class }}" style="width: {{ progress_pct }}%;"></div>
+  </div>
+  {% endif %}
 
   <div class="flex gap-3 mt-1" style="flex-wrap: wrap; font-size: .78rem; color: var(--text-muted);">
     <div><strong style="color: var(--text);">Очередь:</strong>
@@ -58,19 +105,16 @@
       {% endif %}
     </div>
     <div><strong style="color: var(--text);">Последний запуск:</strong>
-      {% if card.last_run %}
-      {{ card.last_run.created_at | moscow_time('%d.%m %H:%M') }}
-      {% if card.last_run.remote_status.value %}
-      <span class="tag tag-sm tag-{{ 'success' if card.last_run.remote_status.value == 'success' else 'running' if card.last_run.remote_status.value in ('running','pending') else 'failed' if card.last_run.remote_status.value == 'failed' else 'pending' }}">
-        {{ remote_status_labels.get(card.last_run.remote_status, card.last_run.remote_status.value) }}
+      {% if lr %}
+      {{ lr.created_at | moscow_time('%d.%m %H:%M') }}
+      {% if lr.remote_status and lr.remote_status.value %}
+      <span class="tag tag-sm tag-{{ 'success' if lr.remote_status.value == 'success' else 'running' if lr.remote_status.value in ('running','pending') else 'failed' if lr.remote_status.value == 'failed' else 'pending' }}">
+        {{ remote_status_labels.get(lr.remote_status, lr.remote_status.value) }}
       </span>
       {% endif %}
       {% else %}
       <span style="color: var(--text-light);">не было</span>
       {% endif %}
-    </div>
-    <div><strong style="color: var(--text);">Primary:</strong>
-      <span class="mono" style="font-size: .75rem;">{{ p.primary_artifact.artifact_key }}</span>
     </div>
   </div>
 

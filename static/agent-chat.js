@@ -107,13 +107,65 @@
     if (els.messages) els.messages.scrollTop = els.messages.scrollHeight;
   }
 
+  /* ── Typing indicator ── */
+  function showTyping() {
+    hideTyping();
+    var div = document.createElement('div');
+    div.className = 'ai-typing';
+    div.id = 'aiTypingIndicator';
+    div.innerHTML = '<div class="dots"><span></span><span></span><span></span></div><span class="typing-label">Маршал печатает…</span>';
+    if (els.messages) els.messages.appendChild(div);
+    scrollToBottom();
+  }
+
+  function hideTyping() {
+    var el = document.getElementById('aiTypingIndicator');
+    if (el) el.remove();
+  }
+
+  /* ── Collapsible code blocks ── */
+  function enableCodeCollapse(container) {
+    var pres = container.querySelectorAll('pre');
+    for (var i = 0; i < pres.length; i++) {
+      var pre = pres[i];
+      if (pre.offsetHeight < 100) continue;
+      var wrap = document.createElement('div');
+      wrap.className = 'code-collapse collapsed';
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+      var btn = document.createElement('button');
+      btn.className = 'code-toggle';
+      btn.textContent = '\u25BC \u0440\u0430\u0437\u0432\u0435\u0440\u043D\u0443\u0442\u044C';
+      btn.addEventListener('click', function(e) {
+        var w = e.target.parentNode;
+        w.classList.toggle('collapsed');
+        e.target.textContent = w.classList.contains('collapsed') ? '\u25BC \u0440\u0430\u0437\u0432\u0435\u0440\u043D\u0443\u0442\u044C' : '\u25B2 \u0441\u0432\u0435\u0440\u043D\u0443\u0442\u044C';
+      });
+      wrap.insertBefore(btn, pre);
+    }
+  }
+
   function addMessageDOM(role, content, isStreaming) {
     var div = document.createElement('div');
     div.className = 'ai-message ' + role;
-    var bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    if (isStreaming) bubble.classList.add('streaming');
-    div.appendChild(bubble);
+    if (role === 'assistant') {
+      var wrap = document.createElement('div');
+      wrap.className = 'bubble-wrap';
+      var avatar = document.createElement('div');
+      avatar.className = 'ai-avatar';
+      avatar.textContent = 'M';
+      wrap.appendChild(avatar);
+      div.appendChild(wrap);
+      var bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      if (isStreaming) bubble.classList.add('streaming');
+      wrap.appendChild(bubble);
+    } else {
+      var bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      if (isStreaming) bubble.classList.add('streaming');
+      div.appendChild(bubble);
+    }
     if (els.messages) els.messages.appendChild(div);
     if (content) setBubbleContent(bubble, content);
     scrollToBottom();
@@ -123,6 +175,7 @@
   function setBubbleContent(bubble, content) {
     if (typeof marked !== 'undefined') {
       bubble.innerHTML = marked.parse(content, { breaks: true, gfm: true });
+      enableCodeCollapse(bubble);
     } else {
       bubble.textContent = content;
     }
@@ -138,9 +191,16 @@
     root.appendChild(tools);
     var msgDiv = document.createElement('div');
     msgDiv.className = 'ai-message assistant';
+    var wrap = document.createElement('div');
+    wrap.className = 'bubble-wrap';
+    var avatar = document.createElement('div');
+    avatar.className = 'ai-avatar';
+    avatar.textContent = 'M';
+    wrap.appendChild(avatar);
     var bubble = document.createElement('div');
     bubble.className = 'bubble streaming';
-    msgDiv.appendChild(bubble);
+    wrap.appendChild(bubble);
+    msgDiv.appendChild(wrap);
     root.appendChild(msgDiv);
     if (els.messages) els.messages.appendChild(root);
     stepsById[stepId] = { rootEl: root, toolsEl: tools, bubbleEl: bubble };
@@ -443,6 +503,7 @@
           break;
 
         case 'message_start':
+          showTyping();
           state.messages.push({ type: 'step_start', stepId: stepId });
           beginStep(stepId);
           break;
@@ -458,6 +519,7 @@
           break;
 
         case 'message_done':
+          hideTyping();
           if (data.content) {
             fullResponse = data.content;
             lastMessageDone = true;
@@ -479,6 +541,7 @@
           break;
 
         case 'error':
+          hideTyping();
           showError(data.message || 'Unknown error');
           break;
 

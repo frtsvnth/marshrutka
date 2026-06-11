@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Design Improvement — Marshrutka</title>
+<style>
+:root{--ink:#1f2328;--mut:#57606a;--line:#d0d7de;--soft:#eef4fb;--accent:#0969da;--do-fg:#0a5d2a;--do-bg:#e6f4ea;--do-bd:#b7e0c4;--ex-fg:#8a5a00;--ex-bg:#fff8e6;--ex-bd:#f0e0b0;--sk-fg:#6e7781;--sk-bg:#f6f8fa;--sk-bd:#e3e7eb;--single-fg:#a40e26;--single-bg:#fdeef0;--single-bd:#f5c2c7}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;background:#f0f2f5;color:var(--ink);line-height:1.6;padding:0}
+.wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:1.6rem;font-weight:700;letter-spacing:-.02em;margin-bottom:4px}
+h2{font-size:1.2rem;font-weight:700;margin:28px 0 12px;letter-spacing:-.01em}
+h3{font-size:1rem;font-weight:600;margin:0 0 4px}
+.agent-instructions{background:var(--soft);border-left:4px solid var(--accent);border-radius:8px;padding:14px 16px;margin:18px 0}
+.ai-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+.ai-badge{font-size:11px;font-weight:700;letter-spacing:.04em;color:#0a3b78}
+.ai-copy{font:600 12px/1 inherit;cursor:pointer;border:1px solid var(--accent);color:var(--accent);background:#fff;border-radius:6px;padding:5px 11px}
+.ai-copy:hover{background:var(--accent);color:#fff}
+.ai-human{margin:0 0 10px;font-size:15px}
+.ai-block{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid var(--line);border-radius:6px;padding:12px 13px;margin:0;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink);user-select:all}
+.corpus{display:flex;gap:8px;font-size:13px;color:#8a5a00;background:#fff8e6;border:1px solid #f0e0b0;border-radius:8px;padding:9px 12px;margin:14px 0}
+.corpus b{color:var(--ink)}
+.section-label{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--mut);text-transform:uppercase;margin:20px 0 6px}
+img.current-screenshots{max-width:100%;border-radius:12px;border:1px solid var(--line);margin:6px 0}
+.screens-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0}
+@media(max-width:640px){.screens-grid{grid-template-columns:1fr}}
+.screens-grid figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.screens-grid figure img{display:block;width:100%;height:auto}
+.screens-grid figcaption{font-size:11px;color:var(--mut);padding:6px 9px;text-align:center}
+.pat{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:14px 0;background:#fff}
+.pat-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin-bottom:4px}
+.pat-h h3{margin:0;font-size:16px}
+.pat-claim{color:var(--mut);font-size:14px;margin:2px 0 10px}
+.prev{font:600 11.5px/1 inherit;color:#0a3b78;background:var(--soft);border-radius:20px;padding:4px 10px}
+.tag{font:700 10.5px/1 inherit;letter-spacing:.03em;border-radius:5px;padding:3px 7px}
+.tag.strong{color:#0a5d2a;background:#e6f4ea;border:1px solid #b7e0c4}
+.tag.avoid{color:#a40e26;background:#fdeef0;border:1px solid #f5c2c7}
+.deckwrap{margin:8px 0}
+.deck{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding:4px 2px 10px;scrollbar-width:thin}
+.deck>figure{flex:0 0 86%;max-width:320px;scroll-snap-align:center;margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+@media(min-width:620px){.deck>figure{flex-basis:46%}}
+.deck>figure>img{display:block;width:100%;height:auto;max-height:480px;object-fit:contain;background:#fafbfc}
+.deck .cap{font-size:12px;color:var(--mut);padding:7px 9px;line-height:1.4}
+.deck .cap b{color:var(--ink)}
+.deck .src{font-size:10.5px;font-weight:700;letter-spacing:.03em;color:var(--accent)}
+.deck-nav{display:flex;gap:6px;justify-content:flex-end;margin-top:2px}
+.deck-nav button{cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:6px;width:34px;height:28px;font-size:13px;line-height:1}
+.deck-nav button:hover{background:var(--soft);border-color:var(--accent);color:var(--accent)}
+.ebadge{font:700 10px/1 inherit;letter-spacing:.02em;border-radius:20px;padding:5px 9px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.ebadge.directional{color:var(--ex-fg);background:var(--ex-bg);border:1px solid var(--ex-bd)}
+.ebadge.strong{color:var(--do-fg);background:var(--do-bg);border:1px solid var(--do-bd)}
+.legend{border:1px solid var(--line);background:#fff;border-radius:12px;padding:6px;margin:0 0 16px}
+.legend-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:12px;padding:9px 10px;border-radius:8px;text-decoration:none;color:inherit}
+.legend-row+.legend-row{border-top:1px solid #eef1f4}
+.legend-row.is-lead{background:linear-gradient(0deg,#fff,var(--soft))}
+.lg-rank{font:800 14px/1 inherit;text-align:center;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background:var(--mut)}
+.legend-row.is-lead .lg-rank{background:var(--accent)}
+.lg-rank.r2{background:#3f6896}.lg-rank.r3{background:#6b7787}
+.lg-name{font-weight:650;min-width:0}
+.lg-ev{font:700 10px/1 inherit;color:var(--mut);white-space:nowrap}
+.verdict{font:700 10.5px/1 inherit;border-radius:6px;padding:5px 9px;white-space:nowrap;letter-spacing:.03em;text-transform:uppercase;border:1px solid transparent;display:inline-flex;align-items:center;gap:5px}
+.verdict.do{color:var(--do-fg);background:var(--do-bg);border-color:var(--do-bd)}
+.verdict.explore{color:var(--ex-fg);background:var(--ex-bg);border-color:var(--ex-bd)}
+.verdict.skip{color:var(--sk-fg);background:var(--sk-bg);border-color:var(--sk-bd)}
+.recs{display:flex;flex-direction:column;gap:16px}
+.rec{position:relative;display:grid;grid-template-columns:minmax(0,1fr);background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(31,35,40,.05)}
+.rec.lead{border:2px solid var(--accent);box-shadow:0 4px 16px rgba(9,105,218,.14);background:linear-gradient(0deg,#fff,var(--soft))}
+.rec.lead::before{content:'\2605 РЕКОМЕНДУЕМЫЙ ПРИОРИТЕТ — НАЧАТЬ ЗДЕСЬ';position:absolute;z-index:4;top:-11px;left:18px;background:var(--accent);color:#fff;font:700 10px/1 inherit;letter-spacing:.05em;border-radius:10px;padding:6px 11px;box-shadow:0 2px 6px rgba(9,105,218,.35)}
+.rec-body{padding:16px 18px 15px;min-width:0}
+.rec.lead .rec-body{padding-top:18px}
+.rec-body h3{margin:0 0 5px;font-size:17px;line-height:1.25}
+.rec-what{margin:0 0 8px;color:var(--mut);font-size:13.5px;line-height:1.5}
+.rec-what b{color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
+.ev-note{font-size:12px;color:var(--mut);margin:-2px 0 11px}
+.skiprow{margin-top:12px;padding-top:11px;border-top:1px dashed var(--line);display:flex;gap:8px;align-items:baseline}
+.skiprow .lbl{font:700 9.5px/1 inherit;letter-spacing:.04em;text-transform:uppercase;color:var(--single-fg);background:var(--single-bg);border:1px solid var(--single-bd);border-radius:5px;padding:4px 7px;white-space:nowrap;flex:0 0 auto}
+.skiprow .txt{font-size:12.5px;color:var(--mut);line-height:1.45}
+.mock{margin:14px 0;font-family:inherit}
+.mock .frame{border:2px dashed var(--line);border-radius:14px;background:#fff;box-shadow:0 1px 4px rgba(31,35,40,.06);overflow:hidden}
+.mock.mobile .frame{max-width:300px;border-radius:26px;border:4px solid #1f2328;border-width:4px}
+.mock .bar{display:flex;align-items:center;gap:6px;padding:7px 10px;background:#f6f8fa;border-bottom:1px solid var(--line);font-size:12px;color:var(--mut)}
+.mock .dot{width:9px;height:9px;border-radius:50%;background:#d0d7de}
+.mock .url{flex:1;text-align:center;background:#fff;border:1px solid var(--line);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--mut)}
+.mock .notch{width:46%;height:16px;margin:6px auto 0;background:#1f2328;border-radius:0 0 12px 12px}
+.mock .body{padding:14px;display:flex;flex-direction:column;gap:10px}
+.mock .box{background:var(--soft);border:1px dashed #b9c7d6;border-radius:8px;min-height:34px;display:flex;align-items:center;justify-content:center;color:#4a5a6a;font-size:12px;text-align:center;padding:8px}
+.mock .box.tall{min-height:80px}.mock .box.cta{background:var(--accent);border:0;color:#fff;font-weight:600;min-height:40px}
+.mock .row{display:flex;gap:10px}.mock .row>.box{flex:1}
+.mock .cap{font-size:12px;color:var(--mut);margin-top:6px;text-align:center}
+.what-works{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0}
+@media(max-width:640px){.what-works{grid-template-columns:1fr}}
+.ww-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff}
+.ww-card h4{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--do-fg)}
+.ww-card p{font-size:12.5px;color:var(--mut);margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Design Improvement — Marshrutka</h1>
+<p style="color:var(--mut);font-size:.9rem">Web‑панель управления контентными пайплайнами · 11 июня 2025 · <b>desktop</b> (FastAPI / Jinja2 / hand‑written CSS)</p>
+
+<section id="agent-instructions" class="agent-instructions">
+  <div class="ai-head"><span class="ai-badge">ДЛЯ AGENT</span>
+    <button class="ai-copy" type="button" onclick="var sec=this.closest('.agent-instructions');var txt=sec.querySelector('.ai-block').innerText;var done=function(ok){this.textContent=ok?'Copied':'Press Cmd/Ctrl+C';setTimeout(function(){this.textContent='Copy';}.bind(this),1500);}.bind(this);if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){done(true);},function(){done(false);});}else{var r=document.createRange();r.selectNodeContents(sec.querySelector('.ai-block'));var s=getSelection();s.removeAllRanges();s.addRange(r);try{document.execCommand('copy');done(true);}catch(e){done(false);}}">Copy</button>
+  </div>
+  <p class="ai-human">Используй этот отчёт как основу для редизайна интерфейса Marshrutka. Начни с улучшения дашборда (добавь метрики, визуальные карточки), затем доработай AI-панель и навигацию.</p>
+  <pre class="ai-block">LAZYWEB REPORT — AGENT HANDOFF
+Use the report at /Users/fortyseventh/marshrutka/.lazyweb/design-improve/marshrutka-2025-06-11/report.html as a starting point for revising the Marshrutka web UI to close the gaps found against best-in-class references.
+
+TOP RECOMMENDATIONS (do first):
+1. Add KPI metrics strip + visual project cards to the dashboard (current state is empty)
+2. Redesign the AI panel chat — add proper conversation threading, avatars, and loading states
+3. Improve sidebar with clearer navigation hierarchy and active states
+4. Add visual progress indicators and status badges to project cards
+
+INDEX ON: visual data density, AI‑chat UX patterns, sidebar information architecture, card-based content hierarchy
+DO NOT OVER-INDEX ON: dark‑theme aesthetics from Intercom references (Marshrutka uses light theme natively)
+DIVE FURTHER: /lazyweb-design-research for deeper competitive grounding on SaaS dashboard design patterns
+
+Evidence basis: Lazyweb screenshots + web captures · 11 June 2026</pre>
+</section>
+
+<div class="corpus"><span>&#9888;</span><p style="margin:0"><b>Evidence basis:</b> 16 Lazyweb desktop screenshots + 4 local web captures. Similarity range 0.35–0.73. Evidence is <b>directional</b> — based on visual prevalence, not measured A/B tests. No growth/monetization experiments apply to this internal tool screen.</p></div>
+
+<!-- ===== CURRENT STATE ===== -->
+<h2>Текущее состояние</h2>
+<div class="screens-grid">
+  <figure><img src="references/current-dashboard.png" alt="Dashboard" loading="lazy"><figcaption>Дашборд — карточки проектов, пустая метрическая зона</figcaption></figure>
+  <figure><img src="references/current-projects.png" alt="Projects" loading="lazy"><figcaption>Проекты — табличный список всех проектов</figcaption></figure>
+  <figure><img src="references/current-schedules.png" alt="Schedules" loading="lazy"><figcaption>Расписания — таблица cron-задач</figcaption></figure>
+  <figure><img src="references/current-publish.png" alt="Publish" loading="lazy"><figcaption>Профили публикации — карточки с платформами</figcaption></figure>
+</div>
+
+<h2 id="recs">Улучшения</h2>
+<nav class="legend" aria-label="Сводка рекомендаций">
+  <a class="legend-row is-lead" href="#r1"><span class="lg-rank">1</span><span class="lg-name">Добавить панель метрик и визуальные карточки проектов<span class="lg-name" style="display:block;font-weight:400;font-size:12px;color:var(--mut)">Дашборду не хватает KPI и визуальной информативности</span></span><span class="lg-ev">DIRECTIONAL · 8/16</span></a>
+  <a class="legend-row" href="#r2"><span class="lg-rank r2">2</span><span class="lg-name">Улучшить AI-панель «Маршал»<span class="lg-name" style="display:block;font-weight:400;font-size:12px;color:var(--mut)">Чат-интерфейс без аватаров, без состояния загрузки</span></span><span class="lg-ev">DIRECTIONAL · 6/16</span></a>
+  <a class="legend-row" href="#r3"><span class="lg-rank r3">3</span><span class="lg-name">Доработать навигацию и каркас<span class="lg-name" style="display:block;font-weight:400;font-size:12px;color:var(--mut)">Са��бар без подписи разделов, нет поиска</span></span><span class="lg-ev">DIRECTIONAL · 5/16</span></a>
+</nav>
+
+<div class="recs">
+
+<article class="rec lead" id="r1">
+  <div class="rec-body">
+    <h3>1. Панель метрик и визуальные карточки проектов</h3>
+    <p class="rec-what">Дашборд Marshrutka показывает карточки проектов, но <b>не имеет KPI-метрик</b> (всего проектов, активных запусков, успешных/упавших). Карточки состоят только из текста — нет статус-баров, иконок, прогресса.</p>
+    <div class="chips"><span class="ebadge directional">Directional · 8/16 references</span></div>
+    <p class="ev-note">«Метрическая панель в верхней части дашборда» — встречается в 8 из 16 просмотренных SaaS-референсов (Geckoboard, Userlane, Intercom, Rippling, Chameleon, WalkMe и др.).</p>
+
+    <div class="deckwrap">
+    <div class="deck">
+      <figure><img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/geckoboard/geckoboard_533c5663d20e16acd8d1.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9nZWNrb2JvYXJkL2dlY2tvYm9hcmRfNTMzYzU2NjNkMjBlMTZhY2Q4ZDEucG5nIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4MTEzMDg4MSwiZXhwIjoxNzg4OTA2ODgxfQ.Ux1laHbKgDAiDJxVUmS27GTPDMhLjbGACAXPnp2TW5A" alt="Geckoboard" loading="lazy">
+        <figcaption class="cap"><span class="src">[Lazyweb]</span> <b>Geckoboard</b> — KPI-метрики: MRR, ARR с графиками и числовыми значениями.</figcaption></figure>
+      <figure><img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/userlane/userlane_4b695d63c02db355c383.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1saWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy91c2VybGFuZS91c2VybGFuZV80YjY5NWQ2M2MwMmRiMzU1YzM4My5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMTI5OTc3LCJleHAiOjE3ODg5MDU5Nzd9.c2aCVzKTEV1zUHrHWQav1ZgPus_93FQJ0ZEP-SCNNPY" alt="Userlane" loading="lazy">
+        <figcaption class="cap"><span class="src">[Lazyweb]</span> <b>Userlane</b> — карточки метрик с прогресс-барами и множителями роста.</figcaption></figure>
+      <figure><img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/rippling/rippling_9de1bb8545dd61e178b3.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9yaXBwbGluZy9yaXBwbGluZ185ZGUxYmI4NTQ1ZGQ2MWUxNzhiMy5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMTI4MTA2LCJleHAiOjE3ODg5MDQxMDZ9.Nztw8exG7zYxzAE4tE5qlY4zQComSFhIGQ-wwSmNYSQ" alt="Rippling" loading="lazy">
+        <figcaption class="cap"><span class="src">[Lazyweb]</span> <b>Rippling</b> — визуальные карточки с иконками и поисковой строкой.</figcaption></figure>
+    </div>
+    <div class="deck-nav">
+      <button type="button" aria-label="Prev" onclick="var d=this.closest('.deck-nav').previousElementSibling,f=d.querySelector('figure');d.scrollBy({left:-((f?f.offsetWidth:300)+12),behavior:'smooth'})">&#9664;</button>
+      <button type="button" aria-label="Next" onclick="var d=this.closest('.deck-nav').previousElementSibling,f=d.querySelector('figure');d.scrollBy({left:(f?f.offsetWidth:300)+12,behavior:'smooth'})">&#9654;</button>
+    </div>
+    </div>
+
+    <p><b>Как внедрить:</b></p>
+    <ul style="font-size:13px;color:var(--mut);padding-left:18px;margin:4px 0 10px;line-height:1.6">
+      <li>Добавить ряд KPI-метрик над карточками: «Проектов: 5», «Запусков сегодня: 3», «Успешных: 87%», «В очереди: 2»</li>
+      <li>Каждому проекту — визуальный индикатор статуса (progress bar выполнения последнего запуска, цветная полоса статуса)</li>
+      <li>Карточки проектов: добавить иконку/эмодзи типа проекта, последнее время запуска, статус расписания</li>
+    </ul>
+
+    <figure class="mock desktop"><div class="frame"><div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">marshrutka.app — Дашборд</span></div><div class="body">
+      <div class="row"><div style="flex:1;background:#eef4fb;border-radius:10px;padding:10px;text-align:center"><b style="font-size:18px">5</b><br><span style="font-size:11px;color:var(--mut)">Проектов</span></div><div style="flex:1;background:#d1fae5;border-radius:10px;padding:10px;text-align:center"><b style="font-size:18px">3</b><br><span style="font-size:11px;color:var(--mut)">Запусков сегодня</span></div><div style="flex:1;background:#dbeafe;border-radius:10px;padding:10px;text-align:center"><b style="font-size:18px">87%</b><br><span style="font-size:11px;color:var(--mut)">Успешных</span></div><div style="flex:1;background:#fef3c7;border-radius:10px;padding:10px;text-align:center"><b style="font-size:18px">2</b><br><span style="font-size:11px;color:var(--mut)">В очереди</span></div></div>
+      <div class="row"><div class="box" style="min-height:80px;background:#fff;border:1px solid var(--line)">📹 Story-to-Video <span style="display:block;font-size:10px;color:var(--mut)">Посл. запуск: 5 мин назад ✓</span><span style="display:block;font-size:10px;color:var(--text-light);background:#d1fae5;border-radius:4px;padding:2px 6px;margin-top:4px">▬▬▬▬▬▬▬▬▬▬ 100%</span></div><div class="box" style="min-height:80px;background:#fff;border:1px solid var(--line)">📝 Ezhu-Ponyatno <span style="display:block;font-size:10px;color:var(--mut)">Посл. запуск: 2 часа назад ⏳</span><span style="display:block;font-size:10px;color:var(--text-light);background:#dbeafe;border-radius:4px;padding:2px 6px;margin-top:4px">▬▬▬▬▬▬▬▬▬▬ 60%</span></div></div>
+    </div></div><figcaption class="cap">Mock-frame — дашборд с метриками + визуальные карточки проектов с прогресс-барами.</figcaption></figure>
+
+    <div class="skiprow"><span class="lbl">Не делать если</span><span class="txt">приложение используется как headless API и дашборд — только для отладки; тогда просто убери его.</span></div>
+  </div>
+</article>
+
+<article class="rec" id="r2">
+  <div class="rec-body">
+    <h3>2. Улучшение AI-панели «Маршал»</h3>
+    <p class="rec-what">AI-панель справа тёмная, но ей не хватает <b>полноценного UX чата</b>: нет аватаров, состояния набора сообщения («печатает…»), не отображается время сообщений, нет сворачивания сообщений с кодом.</p>
+    <div class="chips"><span class="ebadge directional">Directional · 6/16 references</span></div>
+    <p class="ev-note">Современные AI-chat интерфейсы (Intercom, Microsoft Copilot, Gemini) добавляют визуальную иерархию сообщений и быстрые действия.</p>
+
+    <div class="deckwrap">
+    <div class="deck">
+      <figure><img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/intercom/intercom_39f31a304b9b7b1c9a57.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9pbnRlcmNvbS9pbnRlcmNvbV8zOWYzMWEzMDRiOWI3YjFjOWE1Ny5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMTI4OTUxLCJleHAiOjE3ODg5MDQ5NTF9.QVfwUbXfR4yiCm8a4ttedqevgNcuUmqu6tq2TVGYSaw" alt="Intercom" loading="lazy">
+        <figcaption class="cap"><span class="src">[Lazyweb]</span> <b>Intercom</b> — AI-сообщения с аватаром, человеко-подобные ответы, быстрые чипсы.</figcaption></figure>
+      <figure><img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/microsoft-copilot/microsoft-copilot_881f6725d7eeed0dc003.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9taWNyb3NvZnQtY29waWxvdC9taWNyb3NvZnQtY29waWxvdF84ODFmNjcyNWQ3ZWVlZDBkYzAwMy5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMTI4OTUxLCJleHAiOjE3ODg5MDQ5NTF9.4_O5Qn1I3x_g3YgX8xKzC47_tZLznx6XyXdCKqyB0hU" alt="Copilot" loading="lazy">
+        <figcaption class="cap"><span class="src">[Lazyweb]</span> <b>Microsoft Copilot</b> — clean chat input с режимами (создать, искать, писать).</figcaption></figure>
+      <figure><img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/gemini/gemini_a4e6e76b26e2d33296bc.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9nZW1pbmkvZ2VtaW5pX2E0ZTZlNzZiMjZlMmQzMzI5NmJjLnBuZyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3ODExMzcyNTIsImV4cCI6MTc4ODkxMzI1Mn0.VXzTaSQW5qtZOzG96H2jfZWerxZ76TED6cqWu2qBZeg" alt="Gemini" loading="lazy">
+        <figcaption class="cap"><span class="src">[Lazyweb]</span> <b>Gemini</b> — категории быстрых задач (Write, Plan, Research, Learn).</figcaption></figure>
+    </div>
+    <div class="deck-nav">
+      <button type="button" aria-label="Prev" onclick="var d=this.closest('.deck-nav').previousElementSibling,f=d.querySelector('figure');d.scrollBy({left:-((f?f.offsetWidth:300)+12),behavior:'smooth'})">&#9664;</button>
+      <button type="button" aria-label="Next" onclick="var d=this.closest('.deck-nav').previousElementSibling,f=d.querySelector('figure');d.scrollBy({left:(f?f.offsetWidth:300)+12,behavior:'smooth'})">&#9654;</button>
+    </div>
+    </div>
+
+    <p><b>Как внедрить:</b></p>
+    <ul style="font-size:13px;color:var(--mut);padding-left:18px;margin:4px 0 10px;line-height:1.6">
+      <li>Добавить аватар «Маршала» (иконка/логотип Marshrutka) слева от его сообщений</li>
+      <li>Индикатор «печатает…» при обработке запроса</li>
+      <li>Группировка шагов (инструменты → ответ) — уже есть в `agent-chat.js`, но не визуализирована в виде карточек</li>
+      <li>Возможность свернуть длинные сообщения с кодом/JSON (toggle)</li>
+      <li>Быстрые чипсы категорий: «Запустить проект», «Проверить логи», «Статус очереди»</li>
+    </ul>
+
+    <div class="skiprow"><span class="lbl">Не делать если</span><span class="txt">текущая функциональность AI-панели устраивает всех пользователей; опрос покажет приоритет.</span></div>
+  </div>
+</article>
+
+<article class="rec" id="r3">
+  <div class="rec-body">
+    <h3>3. Навигация и каркас</h3>
+    <p class="rec-what">Текущий сайдбар содержит 4 пункта без группировки. Нет поиска, нет хлебных крошек на всех страницах, нет быстрого переключения между проектами.</p>
+    <div class="chips"><span class="ebadge directional">Directional · 5/16 references</span></div>
+
+    <div class="deckwrap">
+    <div class="deck">
+      <figure><img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/intercom/intercom_162478768af2ece85872.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9pbnRlcmNvbS9pbnRlcmNvbV8xNjI0Nzg3NjhhZjJlY2U4NTg3Mi5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMTI4MTA2LCJleHAiOjE3ODg5MDQxMDZ9.xrIXdhQoAnC63KBSbOnzZHA_PDQ9cY3NXYaUiqHzduw" alt="Intercom" loading="lazy">
+        <figcaption class="cap"><span class="src">[Lazyweb]</span> <b>Intercom</b> — сайдбар с иконками и текстом, группировка разделов.</figcaption></figure>
+      <figure><img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/chameleon/chameleon_3ca9be89e8ec5c6af482.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9jaGFtZWxlb24vY2hhbWVsZW9uXzNjYTliZTg5ZThlYzVjNmFmNDgyLnBuZyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3ODExMzAzNDQsImV4cCI6MTc4ODkwNjM0NH0.gGWU2oIMBV4gWvwI2t6pFCASyZ-ZtH2uEl1fTGfEwTU" alt="Chameleon" loading="lazy">
+        <figcaption class="cap"><span class="src">[Lazyweb]</span> <b>Chameleon</b> — поисковая строка в сайдбаре, группировка по разделам.</figcaption></figure>
+      <figure><img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/clickup/authenticated/google/clickup_26a42b8a47186c59ed5f.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9jbGlja3VwL2F1dGhlbnRpY2F0ZWQvZ29vZ2xlL2NsaWNrdXBfMjZhNDJiOGE0NzE4NmM1OWVkNWYucG5nIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4MTE1NTQ5NywiZXhwIjoxNzg4OTMxNDk3fQ.GwuJgHzewB6Ejrp9xmPvYrHkiThq7zzBqQGK6mi-3i4" alt="ClickUp" loading="lazy">
+        <figcaption class="cap"><span class="src">[Lazyweb]</span> <b>ClickUp</b> — многоуровневая навигация, поиск по проектам.</figcaption></figure>
+    </div>
+    <div class="deck-nav">
+      <button type="button" aria-label="Prev" onclick="var d=this.closest('.deck-nav').previousElementSibling,f=d.querySelector('figure');d.scrollBy({left:-((f?f.offsetWidth:300)+12),behavior:'smooth'})">&#9664;</button>
+      <button type="button" aria-label="Next" onclick="var d=this.closest('.deck-nav').previousElementSibling,f=d.querySelector('figure');d.scrollBy({left:(f?f.offsetWidth:300)+12,behavior:'smooth'})">&#9654;</button>
+    </div>
+    </div>
+
+    <p><b>Конкретные изменения:</b></p>
+    <ul style="font-size:13px;color:var(--mut);padding-left:18px;margin:4px 0 10px;line-height:1.6">
+      <li>Разделить сайдбар на секции: «Основное» (Дашборд, Проекты) и «Интеграции» (Расписания, Публикация)</li>
+      <li>Добавить строку глобального поиска в сайдбар или в верхнюю панель</li>
+      <li>Улучшить хлебные крошки: показывать на всех страницах, добавить имя проекта на странице деталей</li>
+      <li>Сделать футер сайдбара менее заметным (уменьшить размер шрифта)</li>
+    </ul>
+
+    <div class="skiprow"><span class="lbl">Не делать если</span><span class="txt">у приложения 1–2 активных пользователя, которым текущая навигация привычна.</span></div>
+  </div>
+</article>
+
+</div><!-- .recs -->
+
+<!-- ===== What's working ===== -->
+<h2>Что уже хорошо</h2>
+<div class="what-works">
+  <div class="ww-card"><h4>✓ Цветовая схема</h4><p>Indigo-акцент + navy для AI-панели — современная комбинация, отлично контрастирует и задаёт тон продукту.</p></div>
+  <div class="ww-card"><h4>✓ Трехколоночный layout</h4><p>Сайдбар | Контент | AI-панель — правильная структура для инструментального SaaS. Resizable AI-панель — strong UX деталь.</p></div>
+  <div class="ww-card"><h4>✓ SPA-навигация</h4><p>Клиентский роутинг через fetch+pushState даёт быструю навигацию без перезагрузок.</p></div>
+  <div class="ww-card"><h4>✓ Адаптивность</h4><p>Брейкпоинты на 1024px и 860px, collapse сайдбара до иконок — мобильные пользователи не останутся без интерфейса.</p></div>
+</div>
+
+<!-- ===== All References ===== -->
+<h2>Все референсы</h2>
+<p style="font-size:13px;color:var(--mut);margin-bottom:10px">Использованы Lazyweb-скриншоты. Все ссылки — июнь 2026.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+  <figure style="margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">
+    <img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/geckoboard/geckoboard_533c5663d20e16acd8d1.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9nZWNrb2JvYXJkL2dlY2tvYm9hcmRfNTMzYzU2NjNkMjBlMTZhY2Q4ZDEucG5nIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4MTEzMDg4MSwiZXhwIjoxNzg4OTA2ODgxfQ.Ux1laHbKgDAiDJxVUmS27GTPDMhLjbGACAXPnp2TW5A" loading="lazy" style="width:100%;height:auto">
+    <figcaption class="cap" style="font-size:10px;padding:5px 7px">Geckoboard [Lazyweb]</figcaption>
+  </figure>
+  <figure style="margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">
+    <img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/userlane/userlane_4b695d63c02db355c383.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy91c2VybGFuZS91c2VybGFuZV80YjY5NWQ2M2MwMmRiMzU1YzM4My5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMTI5OTc3LCJleHAiOjE3ODg5MDU5Nzd9.c2aCVzKTEV1zUHrHWQav1ZgPus_93FQJ0ZEP-SCNNPY" loading="lazy" style="width:100%;height:auto">
+    <figcaption class="cap" style="font-size:10px;padding:5px 7px">Userlane [Lazyweb]</figcaption>
+  </figure>
+  <figure style="margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">
+    <img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/intercom/intercom_39f31a304b9b7b1c9a57.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9pbnRlcmNvbS9pbnRlcmNvbV8zOWYzMWEzMDRiOWI3YjFjOWE1Ny5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMTI4OTUxLCJleHAiOjE3ODg5MDQ5NTF9.QVfwUbXfR4yiCm8a4ttedqevgNcuUmqu6tq2TVGYSaw" loading="lazy" style="width:100%;height:auto">
+    <figcaption class="cap" style="font-size:10px;padding:5px 7px">Intercom AI Chat [Lazyweb]</figcaption>
+  </figure>
+  <figure style="margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">
+    <img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/microsoft-copilot/microsoft-copilot_881f6725d7eeed0dc003.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9taWNyb3NvZnQtY29waWxvdC9taWNyb3NvZnQtY29waWxvdF84ODFmNjcyNWQ3ZWVlZDBkYzAwMy5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMTI4OTUxLCJleHAiOjE3ODg5MDQ5NTF9.4_O5Qn1I3x_g3YgX8xKzC47_tZLznx6XyXdCKqyB0hU" loading="lazy" style="width:100%;height:auto">
+    <figcaption class="cap" style="font-size:10px;padding:5px 7px">Microsoft Copilot [Lazyweb]</figcaption>
+  </figure>
+  <figure style="margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">
+    <img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/gemini/gemini_a4e6e76b26e2d33296bc.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9nZW1pbmkvZ2VtaW5pX2E0ZTZlNzZiMjZlMmQzMzI5NmJjLnBuZyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3ODExMzcyNTIsImV4cCI6MTc4ODkxMzI1Mn0.VXzTaSQW5qtZOzG96H2jfZWerxZ76TED6cqWu2qBZeg" loading="lazy" style="width:100%;height:auto">
+    <figcaption class="cap" style="font-size:10px;padding:5px 7px">Gemini Quick Tasks [Lazyweb]</figcaption>
+  </figure>
+  <figure style="margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">
+    <img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/rippling/rippling_9de1bb8545dd61e178b3.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9yaXBwbGluZy9yaXBwbGluZ185ZGUxYmI4NTQ1ZGQ2MWUxNzhiMy5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMTI4MTA2LCJleHAiOjE3ODg5MDQxMDZ9.Nztw8exG7zYxzAE4tE5qlY4zQComSFhIGQ-wwSmNYSQ" loading="lazy" style="width:100%;height:auto">
+    <figcaption class="cap" style="font-size:10px;padding:5px 7px">Rippling Dashboard [Lazyweb]</figcaption>
+  </figure>
+  <figure style="margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">
+    <img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/chameleon/chameleon_3ca9be89e8ec5c6af482.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9jaGFtZWxlb24vY2hhbWVsZW9uXzNjYTliZTg5ZThlYzVjNmFmNDgyLnBuZyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3ODExMzAzNDQsImV4cCI6MTc4ODkwNjM0NH0.gGWU2oIMBV4gWvwI2t6pFCASyZ-ZtH2uEl1fTGfEwTU" loading="lazy" style="width:100%;height:auto">
+    <figcaption class="cap" style="font-size:10px;padding:5px 7px">Chameleon [Lazyweb]</figcaption>
+  </figure>
+  <figure style="margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff">
+    <img src="https://zlfyzdmohcskkucuunmk.supabase.co/storage/v1/object/sign/sites/clickup/authenticated/google/clickup_26a42b8a47186c59ed5f.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NTU0MmU4OC1mNWRkLTQxMDEtOWZkYy0yODFiMzM3NmYyOTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJzaXRlcy9jbGlja3VwL2F1dGhlbnRpY2F0ZWQvZ29vZ2xlL2NsaWNrdXBfMjZhNDJiOGE0NzE4NmM1OWVkNWYucG5nIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4MTE1NTQ5NywiZXhwIjoxNzg4OTMxNDk3fQ.GwuJgHzewB6Ejrp9xmPvYrHkiThq7zzBqQGK6mi-3i4" loading="lazy" style="width:100%;height:auto">
+    <figcaption class="cap" style="font-size:10px;padding:5px 7px">ClickUp Navigation [Lazyweb]</figcaption>
+  </figure>
+</div>
+
+<p style="margin-top:20px;font-size:13px;color:var(--mut);text-align:center">Report generated: 11 June 2026 · <b>Открыть в браузере: file:///Users/fortyseventh/marshrutka/.lazyweb/design-improve/marshrutka-2025-06-11/report.html</b></p>
+
+</div>
+</body>
+</html>

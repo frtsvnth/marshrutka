@@ -233,6 +233,26 @@ input[type="checkbox"] { width: auto; margin-right: .35rem; }
 @media (max-width: 1024px) { .ai-panel:not(.Hidden) { width: 220px; min-width: 160px; } }
 @media (max-width: 860px) { .ai-panel { display: none; } .sidebar { width: 56px; } .sidebar .subtitle, .sidebar nav a span.nav-label { display: none; } .main-wrap { padding: .75rem; } .grid-2 { grid-template-columns: 1fr; } .content-area { padding-right: 0; } }
 .empty-state { color: var(--text-light); font-size: .85rem; padding: .75rem 0; }
+
+/* ── KPI metrics strip ── */
+.kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; margin-bottom: 1.25rem; }
+.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: .9rem 1.1rem; text-align: center; transition: border-color .12s, box-shadow .12s; }
+.kpi-card:hover { border-color: var(--indigo-light); box-shadow: 0 0 0 2px rgba(79,70,229,.06); }
+.kpi-card .kpi-value { font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.2; }
+.kpi-card .kpi-label { font-size: .72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-top: .15rem; }
+.kpi-card .kpi-trend { font-size: .7rem; margin-top: .2rem; }
+.kpi-card.kpi-success .kpi-value { color: var(--success-text); }
+.kpi-card.kpi-running .kpi-value { color: var(--running-text); }
+.kpi-card.kpi-failed .kpi-value { color: var(--failed-text); }
+.kpi-card.kpi-neutral .kpi-value { color: var(--text); }
+
+/* ── Progress bar ── */
+.progress-bar { width: 100%; height: 6px; background: var(--bg); border-radius: 100px; overflow: hidden; margin-top: .35rem; }
+.progress-bar .fill { height: 100%; border-radius: 100px; transition: width .4s ease; }
+.progress-bar .fill.success { background: var(--success-text); }
+.progress-bar .fill.running { background: var(--running-text); }
+.progress-bar .fill.failed { background: var(--failed-text); }
+.progress-bar .fill.pending { background: var(--text-light); }
 details summary { cursor: pointer; font-size: .82rem; color: var(--text-muted); padding: .15rem 0; }
 details summary:hover { color: var(--text); }
 pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-size: .78rem; border: 1px solid var(--border); overflow-x: auto; }
@@ -407,9 +427,9 @@ pre.json { background: #f8f9fc; padding: .65rem 1rem; border-radius: 10px; font-
         Пиши текст, проверь проекты, запусти пайплайн или исследуй тему.</p>
         <div class="ai-chips" id="aiQuickChips">
           <span class="ai-chip" onclick="aiSendQuick(this)">📋 Список проектов</span>
-          <span class="ai-chip" onclick="aiSendQuick(this)">✍️ Текст на 160 слов</span>
           <span class="ai-chip" onclick="aiSendQuick(this)">📊 Последние запуски</span>
-          <span class="ai-chip" onclick="aiSendQuick(this)">🔍 Проверь проекты</span>
+          <span class="ai-chip" onclick="aiSendQuick(this)">▶ Запустить проект</span>
+          <span class="ai-chip" onclick="aiSendQuick(this)">🔍 Статус очереди</span>
         </div>
       </div>
     </div>
