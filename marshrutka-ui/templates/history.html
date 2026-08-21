@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}История{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>История</h1>
+  <div class="description">Что уже брали. Материал из этого списка повторно в работу не пойдёт.</div>
+</div>
+
+<div class="filters">
+  <a href="/history" class="{% if not selected %}active{% endif %}">Все</a>
+  {% for pid, name in project_names.items() %}
+  <a href="/history?project={{ pid }}" class="{% if selected == pid %}active{% endif %}">{{ name }}</a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  {% if items %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Когда</th><th>Проект</th><th>Материал</th><th>Статус</th><th>Видео</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in items %}
+        <tr>
+          <td class="mono muted">{{ r.when }}</td>
+          <td>{{ project_names.get(r.project, r.project) }}</td>
+          <td>
+            <div class="truncate">{{ r.title or r.key }}</div>
+            <div class="mono muted" style="font-size:.72rem">{{ r.key }}</div>
+            {% if r.note %}<div class="form-hint">{{ r.note }}</div>{% endif %}
+          </td>
+          <td>
+            {% if r.status == "published" %}<span class="tag tag-success">опубликовано</span>
+            {% elif r.status in ("failed", "publish_failed") %}<span class="tag tag-failed">{{ r.status }}</span>
+            {% elif r.status == "started" %}<span class="tag tag-running">в работе</span>
+            {% else %}<span class="tag tag-pending">{{ r.status }}</span>{% endif %}
+          </td>
+          <td>{% if r.video_url %}<a href="{{ r.video_url }}" target="_blank" rel="noopener">открыть</a>{% else %}—{% endif %}</td>
+          <td style="text-align:right">
+            <form method="post" action="/history/forget" style="display:inline"
+                  onsubmit="return confirm('Разрешить брать этот материал заново?')">
+              <input type="hidden" name="project" value="{{ r.project }}">
+              <input type="hidden" name="key" value="{{ r.key }}">
+              <button class="btn btn-danger btn-sm" type="submit">Забыть</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">Записей нет.</div>
+  {% endif %}
+</div>
+{% endblock %}

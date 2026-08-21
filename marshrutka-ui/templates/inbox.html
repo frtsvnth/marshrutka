@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Инбокс{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Инбокс</h1>
+  <div class="description">Материал, который заберёт суточный крон Hermes. Верхний — первый.</div>
+</div>
+
+<div class="card">
+  <div class="card-title">Добавить материал</div>
+  <form method="post" action="/inbox/add">
+    <div class="form-group">
+      <label class="form-label" for="project">Конвейер</label>
+      <select name="project" id="project" onchange="switchField(this.value)">
+        {% for pid, f in fields.items() %}
+        <option value="{{ pid }}" {% if selected == pid %}selected{% endif %}>{{ project_names.get(pid, pid) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    {% for pid, f in fields.items() %}
+    <div class="form-group field-block" id="field-{{ pid }}"
+         style="display: {% if selected == pid or (not selected and loop.first) %}block{% else %}none{% endif %}">
+      <label class="form-label">{{ f.label }}</label>
+      {% if f.multiline %}
+      <textarea name="value" placeholder="{{ f.placeholder }}" {% if selected != pid and not (not selected and loop.first) %}disabled{% endif %}></textarea>
+      {% else %}
+      <input type="text" name="value" placeholder="{{ f.placeholder }}" {% if selected != pid and not (not selected and loop.first) %}disabled{% endif %}>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="form-group">
+      <label class="form-label" for="title">Заголовок для списка</label>
+      <input type="text" name="title" id="title" placeholder="Необязательно — иначе подставится начало материала">
+      <div class="form-hint">Это не заголовок ролика: его напишет конвейер сам.</div>
+    </div>
+
+    <button class="btn btn-primary" type="submit">Положить в инбокс</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-title">Ждут очереди ({{ items | length }})</div>
+  {% if items %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Добавлено</th><th>Проект</th><th>Материал</th><th></th></tr></thead>
+      <tbody>
+        {% for i in items %}
+        <tr>
+          <td class="mono muted">{{ i.added }}</td>
+          <td>{{ project_names.get(i.project, i.project) }}</td>
+          <td class="truncate">{{ i.title or (i.payload.values() | list | first) }}</td>
+          <td style="text-align:right">
+            <form method="post" action="/inbox/{{ i.inbox_id }}/release" style="display:inline">
+              <input type="hidden" name="status" value="done">
+              <button class="btn btn-danger btn-sm" type="submit">Убрать</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">Пусто. Крон в этом случае отработает вхолостую и просто скажет об этом.</div>
+  {% endif %}
+</div>
+
+{% if taken %}
+<div class="card">
+  <div class="card-title">Взято в работу ({{ taken | length }})</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Добавлено</th><th>Проект</th><th>Материал</th><th></th></tr></thead>
+      <tbody>
+        {% for i in taken %}
+        <tr>
+          <td class="mono muted">{{ i.added }}</td>
+          <td>{{ project_names.get(i.project, i.project) }}</td>
+          <td class="truncate">{{ i.title or (i.payload.values() | list | first) }}</td>
+          <td style="text-align:right">
+            <form method="post" action="/inbox/{{ i.inbox_id }}/release" style="display:inline">
+              <input type="hidden" name="status" value="pending">
+              <button class="btn btn-outline btn-sm" type="submit">Вернуть в очередь</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="form-hint mt-2">
+    Материал висит здесь, если прогон оборвался. Вернуть в очередь стоит,
+    только когда причина обрыва была внешней — упавший сервис, перезапуск.
+  </div>
+</div>
+{% endif %}
+
+<script>
+function switchField(project) {
+  document.querySelectorAll('.field-block').forEach(function (block) {
+    var active = block.id === 'field-' + project;
+    block.style.display = active ? 'block' : 'none';
+    // Отключаем поля скрытых блоков, иначе в POST уедут два значения name="value".
+    block.querySelectorAll('input, textarea').forEach(function (el) { el.disabled = !active; });
+  });
+}
+switchField(document.getElementById('project').value);
+</script>
+{% endblock %}
