@@ -1,135 +1,90 @@
 {% extends "base.html" %}
 {% block title %}Дашборд{% endblock %}
+
 {% block content %}
 <div class="page-header">
-  <div class="flex" style="justify-content: space-between; align-items: center;">
-    <div>
-      <h1>Дашборд</h1>
-      <div class="description">Оперативный пульт: что требует внимания прямо сейчас. Очереди, ошибки, stale-проекты.</div>
-    </div>
-    <div class="flex gap-1">
-      <a href="/projects" class="btn btn-outline">⊞ Все проекты</a>
-      <a href="/projects/new" class="btn btn-primary">+ Добавить проект</a>
-    </div>
-  </div>
+  <h1>Дашборд</h1>
+  <div class="description">Что происходит с конвейерами прямо сейчас</div>
 </div>
 
-{% set ns = namespace(total_projects=0, total_queued=0, total_failed=0, recent_runs=0, success_runs=0) %}
-{% for card in project_cards %}
-  {% set ns.total_projects = ns.total_projects + 1 %}
-  {% set qs = card.queue_summary %}
-  {% set ns.total_queued = ns.total_queued + qs.queued %}
-  {% set ns.total_failed = ns.total_failed + qs.failed %}
-  {% if card.last_run and card.last_run.created_at %}
-    {% set ns.recent_runs = ns.recent_runs + 1 %}
-    {% if card.last_run.remote_status and card.last_run.remote_status.value == 'success' %}
-      {% set ns.success_runs = ns.success_runs + 1 %}
-    {% endif %}
-  {% endif %}
-{% endfor %}
-{% set success_rate = (ns.success_runs * 100 // ns.recent_runs) if ns.recent_runs > 0 else 0 %}
-
-<div class="kpi-strip">
-  <div class="kpi-card kpi-neutral">
-    <div class="kpi-value">{{ ns.total_projects }}</div>
-    <div class="kpi-label">Проектов</div>
-  </div>
-  <div class="kpi-card kpi-running">
-    <div class="kpi-value">{{ ns.total_queued }}</div>
-    <div class="kpi-label">В очереди</div>
-  </div>
-  <div class="kpi-card kpi-{{ 'success' if ns.total_failed == 0 else 'failed' }}">
-    <div class="kpi-value">{{ ns.total_failed }}</div>
-    <div class="kpi-label">С ошибкой</div>
-  </div>
-  <div class="kpi-card kpi-{{ 'success' if success_rate >= 80 else 'failed' }}">
-    <div class="kpi-value">{{ success_rate }}%</div>
-    <div class="kpi-label">Успешных запусков</div>
-  </div>
-</div>
-
-{% if not project_cards %}
-<div class="card">
-  <div class="empty-state">Пока нет проектов. Нажмите «Добавить проект», чтобы создать первый контентный маршрут.</div>
-</div>
+{% if down %}
+<div class="alert">Не отвечают: {{ down | join(", ") }}</div>
 {% endif %}
 
-{% for card in project_cards %}
-{% set p = card.project %}
-{% set qs = card.queue_summary %}
-{% set has_active = qs.draft + qs.queued + qs.launching %}
-{% set border_color = 'var(--failed-text)' if qs.failed > 0 else 'var(--amber)' if card.stale_days > 7 else 'var(--indigo)' %}
-{% set dot_color = 'var(--failed-text)' if qs.failed > 0 else 'var(--primary)' if has_active > 0 else 'var(--success-text)' %}
-{% set total = qs.queued + qs.draft + qs.failed %}
-<div class="card" style="border-left: 4px solid {{ border_color }};">
-  <div class="flex" style="justify-content: space-between; align-items: center;">
-    <div style="flex: 1;">
-      <div class="flex gap-2" style="align-items: center; flex-wrap: wrap;">
-        <a href="/projects/{{ p.project_id }}" style="font-size: 1.05rem; font-weight: 700; color: var(--text);">{{ p.display_name }}</a>
-        {% if not p.enabled %}
-        <span class="tag tag-pending">отключён</span>
-        {% endif %}
-        {% if qs.failed > 0 %}
-        <span class="tag tag-failed" style="font-size: .72rem;">⚠ {{ qs.failed }} в очереди с ошибкой</span>
-        {% endif %}
-        {% if card.stale_days > 7 %}
-        <span class="tag tag-cancelled" style="font-size: .72rem;">⏳ нет запусков {{ card.stale_days }} дн.</span>
-        {% endif %}
-        {% if card.last_run and card.last_run.remote_status and card.last_run.remote_status.value == 'success' %}
-        <span class="tag tag-success" style="font-size: .72rem;">✓ готов</span>
-        {% endif %}
-      </div>
-    </div>
-    {% set status_label %}
-      {%- if qs.failed > 0 -%}Есть ошибки в очереди
-      {%- elif has_active > 0 -%}Есть задачи в очереди
-      {%- else -%}Очередь пуста, ошибок нет
-      {%- endif -%}
-    {% endset %}
-    <span title="{{ status_label }}" style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: {{ dot_color }}; flex-shrink: 0; border: 2px solid rgba(0,0,0,0.06); box-shadow: 0 0 0 1px rgba(255,255,255,0.5);"></span>
+<div class="kpi-strip">
+  <div class="kpi-card kpi-running">
+    <div class="kpi-value">{{ pending | default(0) }}</div>
+    <div class="kpi-label">в инбоксе</div>
   </div>
-
-  {% set lr = card.last_run %}
-
-  <div class="flex gap-3 mt-1" style="flex-wrap: wrap; font-size: .78rem; color: var(--text-muted);">
-    <div><strong style="color: var(--text);">Очередь:</strong>
-      {% if qs.queued > 0 %}<span class="tag tag-sm tag-running">{{ qs.queued }} в очереди</span>{% endif %}
-      {% if qs.draft > 0 %}<span class="tag tag-sm tag-pending">{{ qs.draft }} черновиков</span>{% endif %}
-      {% if qs.failed > 0 %}<span class="tag tag-sm tag-failed">{{ qs.failed }} с ошибкой</span>{% endif %}
-      {% if qs.total == 0 %}<span style="color: var(--text-light);">пуста</span>{% endif %}
-      <span class="tag tag-sm" style="background: #f3f4f6; color: #6b7280;">{{ qs.total }} всего</span>
-    </div>
-    <div><strong style="color: var(--text);">Расписания:</strong>
-      {% if card.active_schedule_count > 0 %}
-      <span class="tag tag-sm tag-success">{{ card.active_schedule_count }} активных</span>
-      {% else %}
-      <span style="color: var(--text-light);">не настроены</span>
-      {% endif %}
-    </div>
-    <div><strong style="color: var(--text);">Последний запуск:</strong>
-      {% if lr %}
-      {{ lr.created_at | moscow_time('%d.%m %H:%M') }}
-      {% if lr.remote_status and lr.remote_status.value %}
-      <span class="tag tag-sm tag-{{ 'success' if lr.remote_status.value == 'success' else 'running' if lr.remote_status.value in ('running','pending') else 'failed' if lr.remote_status.value == 'failed' else 'pending' }}">
-        {{ remote_status_labels.get(lr.remote_status, lr.remote_status.value) }}
-      </span>
-      {% endif %}
-      {% else %}
-      <span style="color: var(--text-light);">не было</span>
-      {% endif %}
-    </div>
+  <div class="kpi-card kpi-success">
+    <div class="kpi-value">{{ published | default(0) }}</div>
+    <div class="kpi-label">опубликовано</div>
   </div>
-
-  <div class="flex gap-1 mt-2" style="flex-wrap: wrap;">
-    <a href="/projects/{{ p.project_id }}" class="btn btn-sm btn-outline">Открыть проект</a>
-    {% if qs.queued > 0 %}
-    <form action="/projects/{{ p.project_id }}/launch-next" method="POST" style="display:inline;">
-      <button class="btn btn-sm btn-success">▶ Запустить следующий из очереди</button>
-    </form>
-    {% else %}
-    <a href="/projects/{{ p.project_id }}#run-form" class="btn btn-sm btn-primary">▶ Создать запуск</a>
-    {% endif %}
+  <div class="kpi-card kpi-failed">
+    <div class="kpi-value">{{ failed | default(0) }}</div>
+    <div class="kpi-label">с ошибкой</div>
   </div>
 </div>
-{% endfor %}
+
+<div class="pipeline-grid">
+  {% for p in pipelines %}
+  <div class="pipeline-card {% if not p.alive %}down{% endif %}">
+    <div class="p-top">
+      <div>
+        <div class="p-name">{{ p.name }}</div>
+        <div class="mono muted" style="font-size:.76rem">{{ p.project }}:{{ p.port }}</div>
+      </div>
+      <span class="tag {% if p.alive %}tag-success{% else %}tag-failed{% endif %}">
+        {{ "работает" if p.alive else "лежит" }}
+      </span>
+    </div>
+    <div class="p-meta">
+      <span>Вход: <span class="mono">{{ p.requires | join(", ") }}</span></span>
+      <span>Обычно: {{ p.typical_runtime_min }} мин</span>
+      {% if p.channel %}<span>Канал: {{ p.channel }}</span>{% endif %}
+      <span>В инбоксе: {{ p.inbox_pending }}</span>
+    </div>
+    {% if not p.alive and p.detail %}
+    <div class="form-hint" style="margin-top:.5rem">{{ p.detail }}</div>
+    {% endif %}
+    <div class="p-actions">
+      <a class="btn btn-outline btn-sm" href="/runs/{{ p.project }}">Прогоны</a>
+      <a class="btn btn-outline btn-sm" href="/inbox?project={{ p.project }}">Инбокс</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-state">Конвейеры не отвечают — данных нет.</div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">Последнее</div>
+  {% if recent %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Когда</th><th>Проект</th><th>Материал</th><th>Статус</th><th>Ссылка</th></tr>
+      </thead>
+      <tbody>
+        {% for r in recent %}
+        <tr>
+          <td class="mono muted">{{ r.when }}</td>
+          <td>{{ project_names.get(r.project, r.project) }}</td>
+          <td class="truncate">{{ r.title or r.key }}</td>
+          <td>
+            {% if r.status == "published" %}<span class="tag tag-success">опубликовано</span>
+            {% elif r.status in ("failed", "publish_failed") %}<span class="tag tag-failed">{{ r.status }}</span>
+            {% elif r.status == "started" %}<span class="tag tag-running">в работе</span>
+            {% else %}<span class="tag tag-pending">{{ r.status }}</span>{% endif %}
+          </td>
+          <td>{% if r.video_url %}<a href="{{ r.video_url }}" target="_blank" rel="noopener">видео</a>{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">Прогонов ещё не было.</div>
+  {% endif %}
+</div>
 {% endblock %}

@@ -1,4 +1,4 @@
-"""Клиент к hermes-pipelines API.
+"""Клиент к youtube-pipelines API.
 
 Единственный источник данных для UI. Своей базы, своих секретов и своего
 состояния у маршрутки больше нет — она только показывает то, что отдаёт API.
@@ -36,7 +36,7 @@ async def request(method: str, path: str, **kw: Any) -> dict:
             resp = await client.request(method, url, headers=_headers(), **kw)
     except httpx.RequestError as exc:
         raise ApiError(
-            f"hermes-pipelines недоступен по адресу {API_URL}. "
+            f"youtube-pipelines недоступен по адресу {API_URL}. "
             f"Проверь HP_API_URL и что сервис поднят. ({exc})"
         ) from exc
 
