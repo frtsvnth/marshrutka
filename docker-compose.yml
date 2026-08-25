@@ -8,9 +8,24 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=root_default
+      - traefik.http.routers.marshrutka.entrypoints=websecure
+      - traefik.http.routers.marshrutka.rule=Host(`marshrutka.pupupu.cloud`)
+      - traefik.http.routers.marshrutka.tls=true
+      - traefik.http.routers.marshrutka.tls.certresolver=mytlschallenge
+      - traefik.http.services.marshrutka.loadbalancer.server.port=8100
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+networks:
+  traefik:
+    name: root_default
+    external: true
