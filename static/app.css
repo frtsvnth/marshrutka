@@ -199,42 +199,105 @@ textarea { min-height: 120px; resize: vertical; }
 .cleanup-preset .form-hint { margin: 0; }
 .cleanup-preset form { display: flex; gap: .35rem; }
 
-/* ── Публичные страницы: лендинг, вход, юридические — без сайдбара ── */
+/* ── Публичные страницы: лендинг и вход — тёмная премиальная тема ──
+   Композиция и техника взяты из mais-seating/AuthScreen (радиальные
+   свечения на тёмном фоне, стеклянная карточка, светящиеся пин-точки),
+   перекрашено в тона маршрутки: indigo вместо gold, amber (тоже уже есть
+   в палитре) вместо teal — второй, тёплый акцент для глубины фона. */
+:root {
+  --dark-bg: #12121f;
+  --dark-surface-1: rgba(32, 32, 52, .92);
+  --dark-surface-2: rgba(17, 17, 28, .97);
+  --dark-border: rgba(129, 140, 248, .16);
+  --dark-border-hover: rgba(129, 140, 248, .4);
+  --indigo-glow: #818cf8;
+  --text-on-dark: #f4f4f8;
+  --text-on-dark-muted: #9295b3;
+  --text-on-dark-faint: #5c5f78;
+}
+
 body.standalone { display: block; height: auto; min-height: 100vh; overflow: auto; }
 .standalone-wrap {
-  min-height: 100vh; display: flex; flex-direction: column;
+  position: relative; min-height: 100vh; display: flex; flex-direction: column;
   align-items: center; justify-content: center; padding: 2.5rem 1.25rem;
 }
 
-.landing-card { max-width: 560px; width: 100%; text-align: center; }
-.landing-logo { width: 120px; height: auto; margin: 0 auto 1.75rem; display: block; }
-.landing-title { font-size: 1.6rem; font-weight: 700; margin-bottom: .7rem; letter-spacing: -0.02em; }
-.landing-desc { color: var(--text-muted); font-size: .95rem; margin-bottom: 2.25rem; line-height: 1.75; }
-.landing-actions { display: flex; flex-direction: column; gap: .75rem; align-items: center; }
-.landing-legal { margin-top: 2.5rem; font-size: .82rem; color: var(--text-light); }
-.landing-legal a { color: var(--text-muted); }
-.landing-legal span.sep { margin: 0 .5rem; }
+/* Тёмная тема — лендинг и вход (эффектные страницы). */
+body.standalone-dark { background: var(--dark-bg); color: var(--text-on-dark); }
+body.standalone-dark .standalone-wrap {
+  background:
+    radial-gradient(1100px 650px at 82% -8%, rgba(129, 140, 248, .16), transparent 60%),
+    radial-gradient(850px 550px at 6% 108%, rgba(245, 158, 11, .09), transparent 55%),
+    var(--dark-bg);
+  overflow: hidden;
+}
 
-.btn-lg { padding: .8rem 2.4rem; font-size: 1rem; border-radius: 12px; }
+/* Светлая тема — privacy/terms (длинный читаемый текст). */
+body.standalone-light { background: var(--bg); color: var(--text); }
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(16px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Лендинг ── */
+.landing-card {
+  position: relative; max-width: 580px; width: 100%; text-align: center;
+  animation: rise-in .55s cubic-bezier(.22, 1, .36, 1);
+}
+.landing-logo {
+  width: 220px; max-width: 60%; height: auto; margin: 0 auto 2.5rem; display: block;
+  filter: drop-shadow(0 8px 24px rgba(129, 140, 248, .25));
+}
+.landing-title {
+  font-size: 2rem; font-weight: 700; margin-bottom: .85rem; letter-spacing: -.02em;
+  background: linear-gradient(135deg, #fff, var(--indigo-glow) 140%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.landing-desc {
+  color: var(--text-on-dark-muted); font-size: .98rem; margin: 0 auto 2.5rem;
+  max-width: 460px; line-height: 1.8;
+}
+.landing-actions { display: flex; flex-direction: column; gap: .75rem; align-items: center; }
+.landing-legal { margin-top: 2.75rem; font-size: .82rem; color: var(--text-on-dark-faint); }
+.landing-legal a { color: var(--text-on-dark-muted); }
+.landing-legal a:hover { color: var(--indigo-glow); }
+.landing-legal span.sep { margin: 0 .6rem; }
+
+.btn-lg {
+  padding: .85rem 2.6rem; font-size: 1rem; border-radius: 100px;
+  background: linear-gradient(135deg, var(--indigo), #6366f1);
+  box-shadow: 0 12px 32px -8px rgba(99, 102, 241, .55);
+  transition: box-shadow .18s, transform .12s;
+}
+.btn-lg:hover { box-shadow: 0 16px 40px -8px rgba(99, 102, 241, .7); transform: translateY(-1px); }
+.btn-lg:active { transform: translateY(0); }
 
 /* ── Экран входа: пин-код ── */
 .auth-card {
-  max-width: 340px; width: 100%; text-align: center;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
-  padding: 2.5rem 2rem; box-shadow: 0 20px 60px -20px rgba(26, 26, 46, .18);
+  position: relative; max-width: 340px; width: 100%; text-align: center;
+  background: linear-gradient(180deg, var(--dark-surface-1), var(--dark-surface-2));
+  border: 1px solid var(--dark-border); border-radius: 24px;
+  padding: 2.75rem 2rem 2.25rem;
+  box-shadow: 0 24px 70px -20px rgba(0, 0, 0, .65), inset 0 1px 0 rgba(255, 255, 255, .04);
+  animation: rise-in .5s cubic-bezier(.22, 1, .36, 1);
 }
-.auth-brand { margin-bottom: 1.75rem; }
-.auth-brand img { width: 56px; height: auto; margin: 0 auto .6rem; display: block; }
-.auth-title { font-size: 1.02rem; font-weight: 600; margin-bottom: 1.75rem; color: var(--text); }
+.auth-brand { margin-bottom: 1.5rem; display: flex; justify-content: center; }
+.auth-brand img { width: 150px; max-width: 100%; height: auto; display: block; }
+.auth-title { font-size: .95rem; font-weight: 500; margin-bottom: 2rem; color: var(--text-on-dark-muted); }
 
-.pin-dots { display: flex; justify-content: center; gap: .7rem; margin-bottom: 2rem; }
+.pin-dots { display: flex; justify-content: center; gap: .85rem; margin-bottom: 2.25rem; }
 .pin-dot {
-  width: .85rem; height: .85rem; border-radius: 50%;
-  border: 2px solid var(--border); background: transparent;
-  transition: background .12s, border-color .12s;
+  width: .7rem; height: .7rem; border-radius: 50%;
+  border: 1.5px solid var(--dark-border-hover); background: transparent;
+  transition: background .15s, border-color .15s, box-shadow .15s;
 }
-.pin-dot.on { background: var(--indigo); border-color: var(--indigo); }
-.pin-dot.err { border-color: var(--failed-text); }
+.pin-dot.on {
+  background: var(--indigo-glow); border-color: var(--indigo-glow);
+  box-shadow: 0 0 14px -1px var(--indigo-glow);
+}
+.pin-dot.err { border-color: #f87171; }
+.pin-dot.err.on { background: #f87171; border-color: #f87171; box-shadow: 0 0 14px -1px #f87171; }
 .pin-dots.shake { animation: pin-shake .45s; }
 @keyframes pin-shake {
   0%, 100% { transform: translateX(0); }
@@ -244,20 +307,25 @@ body.standalone { display: block; height: auto; min-height: 100vh; overflow: aut
   80% { transform: translateX(7px); }
 }
 
-.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: .65rem; }
 .key {
-  aspect-ratio: 1; border-radius: 50%; border: 1px solid var(--border);
-  background: var(--bg); font-size: 1.15rem; font-weight: 500; color: var(--text);
-  cursor: pointer; transition: background .1s, color .1s;
+  aspect-ratio: 1; border-radius: 50%; border: 1px solid var(--dark-border);
+  background: rgba(255, 255, 255, .02); font-size: 1.15rem; font-weight: 500;
+  color: var(--text-on-dark); cursor: pointer;
+  transition: background .12s, border-color .12s, transform .06s;
 }
-.key:hover { background: var(--indigo-light); }
-.key:active { background: var(--indigo); color: #fff; }
+.key:hover { border-color: var(--indigo-glow); background: rgba(129, 140, 248, .1); }
+.key:active { transform: scale(.93); background: rgba(129, 140, 248, .22); }
 .key-spacer { visibility: hidden; }
-.key-back { font-size: 1rem; color: var(--text-muted); background: transparent; border-color: transparent; }
-.key-back:hover { background: var(--pending-bg); }
+.key-back { font-size: 1rem; color: var(--text-on-dark-muted); background: transparent; border-color: transparent; }
+.key-back:hover { background: rgba(255, 255, 255, .04); border-color: transparent; }
 
-.auth-hint { min-height: 1.2rem; margin-top: 1.25rem; font-size: .82rem; color: var(--failed-text); }
-.auth-back { display: inline-block; margin-top: 1.5rem; font-size: .82rem; }
+.auth-hint { min-height: 1.2rem; margin-top: 1.4rem; font-size: .8rem; letter-spacing: .02em; color: #f87171; }
+.auth-back {
+  display: inline-block; margin-top: 1.75rem; font-size: .8rem;
+  color: var(--text-on-dark-faint);
+}
+.auth-back:hover { color: var(--indigo-glow); }
 
 /* ── Privacy / Terms ── */
 .policy-page { max-width: 720px; width: 100%; }
