@@ -198,3 +198,73 @@ textarea { min-height: 120px; resize: vertical; }
 .cleanup-preset { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .cleanup-preset .form-hint { margin: 0; }
 .cleanup-preset form { display: flex; gap: .35rem; }
+
+/* ── Публичные страницы: лендинг, вход, юридические — без сайдбара ── */
+body.standalone { display: block; height: auto; min-height: 100vh; overflow: auto; }
+.standalone-wrap {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 2.5rem 1.25rem;
+}
+
+.landing-card { max-width: 560px; width: 100%; text-align: center; }
+.landing-logo { width: 120px; height: auto; margin: 0 auto 1.75rem; display: block; }
+.landing-title { font-size: 1.6rem; font-weight: 700; margin-bottom: .7rem; letter-spacing: -0.02em; }
+.landing-desc { color: var(--text-muted); font-size: .95rem; margin-bottom: 2.25rem; line-height: 1.75; }
+.landing-actions { display: flex; flex-direction: column; gap: .75rem; align-items: center; }
+.landing-legal { margin-top: 2.5rem; font-size: .82rem; color: var(--text-light); }
+.landing-legal a { color: var(--text-muted); }
+.landing-legal span.sep { margin: 0 .5rem; }
+
+.btn-lg { padding: .8rem 2.4rem; font-size: 1rem; border-radius: 12px; }
+
+/* ── Экран входа: пин-код ── */
+.auth-card {
+  max-width: 340px; width: 100%; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+  padding: 2.5rem 2rem; box-shadow: 0 20px 60px -20px rgba(26, 26, 46, .18);
+}
+.auth-brand { margin-bottom: 1.75rem; }
+.auth-brand img { width: 56px; height: auto; margin: 0 auto .6rem; display: block; }
+.auth-title { font-size: 1.02rem; font-weight: 600; margin-bottom: 1.75rem; color: var(--text); }
+
+.pin-dots { display: flex; justify-content: center; gap: .7rem; margin-bottom: 2rem; }
+.pin-dot {
+  width: .85rem; height: .85rem; border-radius: 50%;
+  border: 2px solid var(--border); background: transparent;
+  transition: background .12s, border-color .12s;
+}
+.pin-dot.on { background: var(--indigo); border-color: var(--indigo); }
+.pin-dot.err { border-color: var(--failed-text); }
+.pin-dots.shake { animation: pin-shake .45s; }
+@keyframes pin-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-9px); }
+  40% { transform: translateX(9px); }
+  60% { transform: translateX(-7px); }
+  80% { transform: translateX(7px); }
+}
+
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
+.key {
+  aspect-ratio: 1; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--bg); font-size: 1.15rem; font-weight: 500; color: var(--text);
+  cursor: pointer; transition: background .1s, color .1s;
+}
+.key:hover { background: var(--indigo-light); }
+.key:active { background: var(--indigo); color: #fff; }
+.key-spacer { visibility: hidden; }
+.key-back { font-size: 1rem; color: var(--text-muted); background: transparent; border-color: transparent; }
+.key-back:hover { background: var(--pending-bg); }
+
+.auth-hint { min-height: 1.2rem; margin-top: 1.25rem; font-size: .82rem; color: var(--failed-text); }
+.auth-back { display: inline-block; margin-top: 1.5rem; font-size: .82rem; }
+
+/* ── Privacy / Terms ── */
+.policy-page { max-width: 720px; width: 100%; }
+.policy-page h1 { font-size: 1.5rem; margin-bottom: .3rem; }
+.policy-page .updated { color: var(--text-light); font-size: .82rem; margin-bottom: 2rem; }
+.policy-page h2 { font-size: 1.05rem; margin: 1.75rem 0 .6rem; }
+.policy-page p, .policy-page li { color: var(--text-muted); font-size: .92rem; line-height: 1.75; }
+.policy-page ul { padding-left: 1.3rem; margin-bottom: .5rem; }
+.policy-page a { color: var(--indigo-dark); }
+.policy-back { display: inline-block; margin-top: 2rem; }

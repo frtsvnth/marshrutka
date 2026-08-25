@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Вход — Marshrutka</title>
+<link rel="icon" type="image/png" href="/static/favicon-96x96.png" sizes="96x96">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="shortcut icon" href="/static/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/static/site.webmanifest">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="standalone">
+
+<div class="standalone-wrap">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <img src="/static/logo.png" alt="Marshrutka">
+    </div>
+    <div class="auth-title">Введите пин-код</div>
+
+    <div class="pin-dots" id="pinDots">
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+    </div>
+
+    <div class="keypad">
+      <button class="key" data-d="1">1</button>
+      <button class="key" data-d="2">2</button>
+      <button class="key" data-d="3">3</button>
+      <button class="key" data-d="4">4</button>
+      <button class="key" data-d="5">5</button>
+      <button class="key" data-d="6">6</button>
+      <button class="key" data-d="7">7</button>
+      <button class="key" data-d="8">8</button>
+      <button class="key" data-d="9">9</button>
+      <span class="key-spacer"></span>
+      <button class="key" data-d="0">0</button>
+      <button class="key key-back" id="pinBack" aria-label="Стереть">⌫</button>
+    </div>
+
+    <div class="auth-hint" id="pinHint">&nbsp;</div>
+    <a class="auth-back" href="/">← На главную</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  var pin = "";
+  var dots = document.querySelectorAll("#pinDots .pin-dot");
+  var dotsWrap = document.getElementById("pinDots");
+  var hint = document.getElementById("pinHint");
+  var busy = false;
+
+  function render() {
+    dots.forEach(function (dot, i) {
+      dot.classList.toggle("on", i < pin.length);
+      dot.classList.remove("err");
+    });
+  }
+
+  function shakeAndReset(message) {
+    hint.textContent = message;
+    dots.forEach(function (dot) { dot.classList.add("err"); });
+    dotsWrap.classList.add("shake");
+    setTimeout(function () {
+      dotsWrap.classList.remove("shake");
+      pin = "";
+      render();
+    }, 480);
+  }
+
+  function submit() {
+    busy = true;
+    fetch("/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "pin=" + encodeURIComponent(pin),
+    })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (res) {
+        busy = false;
+        if (res.ok && res.data.ok) {
+          window.location.href = "/dashboard";
+        } else {
+          shakeAndReset((res.data && res.data.error) || "Неверный код");
+        }
+      })
+      .catch(function () {
+        busy = false;
+        shakeAndReset("Не удалось соединиться");
+      });
+  }
+
+  function press(d) {
+    if (busy || pin.length >= 6) return;
+    pin += d;
+    render();
+    hint.textContent = " ";
+    if (pin.length === 6) submit();
+  }
+
+  function back() {
+    if (busy) return;
+    pin = pin.slice(0, -1);
+    render();
+  }
+
+  document.querySelectorAll(".key[data-d]").forEach(function (btn) {
+    btn.addEventListener("click", function () { press(btn.getAttribute("data-d")); });
+  });
+  document.getElementById("pinBack").addEventListener("click", back);
+
+  window.addEventListener("keydown", function (e) {
+    if (e.key >= "0" && e.key <= "9") press(e.key);
+    else if (e.key === "Backspace") back();
+  });
+})();
+</script>
+
+</body>
+</html>

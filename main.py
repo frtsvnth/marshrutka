@@ -15,10 +15,11 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+import auth
 import client
 
 BASE_DIR = Path(__file__).parent
@@ -66,6 +67,55 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+# ── Публичные страницы: лендинг, вход, юридические ──────────────────────────
+# Не защищены пин-кодом — по ним проходит и живой человек до входа, и ревью
+# Google при верификации OAuth-приложения (нужны рабочие Homepage/Privacy/
+# Terms ссылки).
+
+@app.get("/")
+async def landing(request: Request):
+    if auth.is_authed(request):
+        return RedirectResponse("/dashboard", status_code=303)
+    return render(request, "landing.html")
+
+
+@app.get("/privacy")
+async def privacy(request: Request):
+    return render(request, "privacy.html")
+
+
+@app.get("/terms")
+async def terms(request: Request):
+    return render(request, "terms.html")
+
+
+@app.get("/login")
+async def login_page(request: Request):
+    if auth.is_authed(request):
+        return RedirectResponse("/dashboard", status_code=303)
+    return render(request, "login.html")
+
+
+@app.post("/login")
+async def login_submit(pin: str = Form(...)):
+    """JSON, не редирект: страница входа сама шлёт fetch и переходит на
+    /dashboard по ok=true — так работает автосабмит по вводу 6-й цифры."""
+    if not auth.check_pin(pin):
+        return JSONResponse({"ok": False, "error": "Неверный код"}, status_code=401)
+    resp = JSONResponse({"ok": True})
+    auth.set_session_cookie(resp)
+    return resp
+
+
+@app.get("/logout")
+async def logout():
+    resp = RedirectResponse("/", status_code=303)
+    auth.clear_session_cookie(resp)
+    return resp
+
+
+# ── Дашборд и остальные страницы: за пин-кодом ───────────────────────────────
+
 CLEANUP_PRESETS = [
     {"mode": "failed", "days": 0, "label": "Ошибки"},
     {"mode": "older_than", "days": 7, "label": "Старше недели"},
@@ -73,8 +123,11 @@ CLEANUP_PRESETS = [
 ]
 
 
-@app.get("/")
+@app.get("/dashboard")
 async def dashboard(request: Request):
+    redirect = auth.require_auth(request)
+    if redirect:
+        return redirect
     try:
         pipelines = await client.pipelines()
         recent = await client.history(limit=12)
@@ -98,13 +151,16 @@ async def dashboard(request: Request):
 
 
 @app.post("/cleanup/{project}")
-async def cleanup_run(project: str, mode: str = Form(...), days: int = Form(0),
-                      action: str = Form(...)):
+async def cleanup_run(request: Request, project: str, mode: str = Form(...),
+                      days: int = Form(0), action: str = Form(...)):
+    redirect = auth.require_auth(request)
+    if redirect:
+        return redirect
     dry_run = action == "preview"
     try:
         result = await client.cleanup(project, mode, days=days, dry_run=dry_run)
     except client.ApiError as exc:
-        return RedirectResponse(f"/?notice={exc.message}", status_code=303)
+        return RedirectResponse(f"/dashboard?notice={exc.message}", status_code=303)
 
     name = PROJECT_NAMES.get(project, project)
     if dry_run:
@@ -120,11 +176,14 @@ async def cleanup_run(project: str, mode: str = Form(...), days: int = Form(0),
         if result.get("errors"):
             notice += f" (ошибок: {len(result['errors'])})"
 
-    return RedirectResponse(f"/?notice={notice}", status_code=303)
+    return RedirectResponse(f"/dashboard?notice={notice}", status_code=303)
 
 
 @app.get("/inbox")
 async def inbox_page(request: Request, project: str = ""):
+    redirect = auth.require_auth(request)
+    if redirect:
+        return redirect
     try:
         items = await client.inbox(project, "ready")
         taken = await client.inbox(project, "taken")
@@ -140,6 +199,9 @@ async def inbox_page(request: Request, project: str = ""):
 @app.post("/inbox/add")
 async def inbox_add(request: Request, project: str = Form(...),
                     value: str = Form(...), title: str = Form("")):
+    redirect = auth.require_auth(request)
+    if redirect:
+        return redirect
     field = INPUT_FIELDS.get(project)
     if not field:
         return RedirectResponse("/inbox?notice=Неизвестный+проект", status_code=303)
@@ -161,7 +223,10 @@ async def inbox_add(request: Request, project: str = Form(...),
 
 
 @app.post("/inbox/{inbox_id}/release")
-async def inbox_release(inbox_id: int, status: str = Form("done")):
+async def inbox_release(request: Request, inbox_id: int, status: str = Form("done")):
+    redirect = auth.require_auth(request)
+    if redirect:
+        return redirect
     try:
         await client.inbox_release(inbox_id, status)
         notice = "Возвращено+в+работу" if status == "ready" else "Закрыто"
@@ -172,6 +237,9 @@ async def inbox_release(inbox_id: int, status: str = Form("done")):
 
 @app.get("/history")
 async def history_page(request: Request, project: str = ""):
+    redirect = auth.require_auth(request)
+    if redirect:
+        return redirect
     try:
         items = await client.history(project, limit=50)
     except client.ApiError as exc:
@@ -181,7 +249,10 @@ async def history_page(request: Request, project: str = ""):
 
 
 @app.post("/history/forget")
-async def history_forget(project: str = Form(...), key: str = Form(...)):
+async def history_forget(request: Request, project: str = Form(...), key: str = Form(...)):
+    redirect = auth.require_auth(request)
+    if redirect:
+        return redirect
     try:
         await client.history_forget(project, key)
         notice = "Материал+снова+доступен"
@@ -192,6 +263,9 @@ async def history_forget(project: str = Form(...), key: str = Form(...)):
 
 @app.get("/runs/{project}")
 async def runs_page(request: Request, project: str, status: str = ""):
+    redirect = auth.require_auth(request)
+    if redirect:
+        return redirect
     try:
         data = await client.runs(project, status)
     except client.ApiError as exc:
@@ -203,6 +277,9 @@ async def runs_page(request: Request, project: str, status: str = ""):
 
 @app.get("/runs/{project}/{job_id}")
 async def run_page(request: Request, project: str, job_id: str):
+    redirect = auth.require_auth(request)
+    if redirect:
+        return redirect
     try:
         data = await client.run_detail(project, job_id)
     except client.ApiError as exc:
