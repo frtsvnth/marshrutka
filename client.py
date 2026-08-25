@@ -60,7 +60,7 @@ async def profiles() -> dict:
     return await request("GET", "/api/profiles")
 
 
-async def inbox(project: str = "", status: str = "pending") -> list[dict]:
+async def inbox(project: str = "", status: str = "ready") -> list[dict]:
     params = {"status": status}
     if project:
         params["project"] = project

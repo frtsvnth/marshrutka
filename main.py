@@ -126,7 +126,7 @@ async def cleanup_run(project: str, mode: str = Form(...), days: int = Form(0),
 @app.get("/inbox")
 async def inbox_page(request: Request, project: str = ""):
     try:
-        items = await client.inbox(project, "pending")
+        items = await client.inbox(project, "ready")
         taken = await client.inbox(project, "taken")
         pipelines = await client.pipelines()
     except client.ApiError as exc:
@@ -164,7 +164,7 @@ async def inbox_add(request: Request, project: str = Form(...),
 async def inbox_release(inbox_id: int, status: str = Form("done")):
     try:
         await client.inbox_release(inbox_id, status)
-        notice = "Возвращено+в+работу" if status == "pending" else "Закрыто"
+        notice = "Возвращено+в+работу" if status == "ready" else "Закрыто"
     except client.ApiError as exc:
         notice = exc.message
     return RedirectResponse(f"/inbox?notice={notice}", status_code=303)

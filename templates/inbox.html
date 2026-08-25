@@ -83,7 +83,7 @@
           <td class="truncate">{{ i.title or (i.payload.values() | list | first) }}</td>
           <td style="text-align:right">
             <form method="post" action="/inbox/{{ i.inbox_id }}/release" style="display:inline">
-              <input type="hidden" name="status" value="pending">
+              <input type="hidden" name="status" value="ready">
               <button class="btn btn-outline btn-sm" type="submit">Вернуть в очередь</button>
             </form>
           </td>
