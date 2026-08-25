@@ -97,3 +97,13 @@ async def runs(project: str, status: str = "", limit: int = 20) -> dict:
 
 async def run_detail(project: str, job_id: str) -> dict:
     return await request("GET", f"/api/runs/{project}/{job_id}")
+
+
+async def system_info() -> dict:
+    return await request("GET", "/api/system")
+
+
+async def cleanup(project: str, mode: str, days: int = 7, dry_run: bool = True) -> dict:
+    return await request("POST", f"/api/cleanup/{project}", json={
+        "mode": mode, "days": days, "dry_run": dry_run,
+    })

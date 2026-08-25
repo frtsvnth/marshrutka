@@ -66,6 +66,13 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+CLEANUP_PRESETS = [
+    {"mode": "failed", "days": 0, "label": "Ошибки"},
+    {"mode": "older_than", "days": 7, "label": "Старше недели"},
+    {"mode": "older_than", "days": 30, "label": "Старше месяца"},
+]
+
+
 @app.get("/")
 async def dashboard(request: Request):
     try:
@@ -73,15 +80,47 @@ async def dashboard(request: Request):
         recent = await client.history(limit=12)
     except client.ApiError as exc:
         return render(request, "dashboard.html", pipelines=[], recent=[],
-                      error=exc.message)
+                      system=None, cleanup_presets=CLEANUP_PRESETS, error=exc.message)
 
     published = sum(1 for r in recent if r["status"] == "published")
     failed = sum(1 for r in recent if r["status"] in ("failed", "publish_failed"))
     pending = sum(p["inbox_pending"] for p in pipelines)
     down = [p["name"] for p in pipelines if not p["alive"]]
 
+    try:
+        system = await client.system_info()
+    except client.ApiError:
+        system = None  # необязательная карточка — не роняем весь дашборд
+
     return render(request, "dashboard.html", pipelines=pipelines, recent=recent,
-                  published=published, failed=failed, pending=pending, down=down)
+                  published=published, failed=failed, pending=pending, down=down,
+                  system=system, cleanup_presets=CLEANUP_PRESETS)
+
+
+@app.post("/cleanup/{project}")
+async def cleanup_run(project: str, mode: str = Form(...), days: int = Form(0),
+                      action: str = Form(...)):
+    dry_run = action == "preview"
+    try:
+        result = await client.cleanup(project, mode, days=days, dry_run=dry_run)
+    except client.ApiError as exc:
+        return RedirectResponse(f"/?notice={exc.message}", status_code=303)
+
+    name = PROJECT_NAMES.get(project, project)
+    if dry_run:
+        matched = result.get("matched", 0)
+        notice = (f"{name}: под удаление попадёт {matched} job(ов) — "
+                  f"нажми «Удалить», чтобы применить") if matched else \
+                 f"{name}: удалять нечего"
+    else:
+        deleted = result.get("deleted", 0)
+        freed = result.get("freed_mb")
+        extra = f", освобождено {freed} МБ" if freed else ""
+        notice = f"{name}: удалено {deleted} job(ов){extra}"
+        if result.get("errors"):
+            notice += f" (ошибок: {len(result['errors'])})"
+
+    return RedirectResponse(f"/?notice={notice}", status_code=303)
 
 
 @app.get("/inbox")

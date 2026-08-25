@@ -182,3 +182,19 @@ textarea { min-height: 120px; resize: vertical; }
   .content-area { padding-right: 0; }
   .truncate { max-width: 160px; }
 }
+
+/* ── Система: диск/RAM, cleanup ── */
+.system-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.usage-row { margin-bottom: .7rem; }
+.usage-row:last-child { margin-bottom: 0; }
+.usage-label { display: flex; justify-content: space-between; font-size: .82rem; color: var(--text-muted); margin-bottom: .3rem; }
+.usage-bar { height: .5rem; border-radius: 100px; background: var(--pending-bg); overflow: hidden; }
+.usage-bar-fill { height: 100%; border-radius: 100px; background: var(--indigo); }
+.usage-bar-fill.warn { background: var(--amber); }
+.usage-bar-fill.crit { background: var(--failed-text); }
+.cleanup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.cleanup-project-title { font-weight: 600; font-size: .85rem; margin-bottom: .6rem; }
+.cleanup-actions { display: flex; flex-direction: column; gap: .5rem; }
+.cleanup-preset { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.cleanup-preset .form-hint { margin: 0; }
+.cleanup-preset form { display: flex; gap: .35rem; }

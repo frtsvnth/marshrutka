@@ -11,6 +11,36 @@
 <div class="alert">Не отвечают: {{ down | join(", ") }}</div>
 {% endif %}
 
+{% if system %}
+<div class="card">
+  <div class="card-title">Сервер</div>
+  <div class="system-grid">
+    <div class="usage-row">
+      <div class="usage-label">
+        <span>Диск</span>
+        <span>{{ system.disk.free_gb }} ГБ свободно из {{ system.disk.total_gb }} ГБ</span>
+      </div>
+      <div class="usage-bar">
+        <div class="usage-bar-fill {% if system.disk.used_percent >= 90 %}crit{% elif system.disk.used_percent >= 75 %}warn{% endif %}"
+             style="width: {{ system.disk.used_percent }}%"></div>
+      </div>
+    </div>
+    {% if system.memory %}
+    <div class="usage-row">
+      <div class="usage-label">
+        <span>Память</span>
+        <span>{{ system.memory.available_gb }} ГБ доступно из {{ system.memory.total_gb }} ГБ</span>
+      </div>
+      <div class="usage-bar">
+        <div class="usage-bar-fill {% if system.memory.used_percent >= 90 %}crit{% elif system.memory.used_percent >= 75 %}warn{% endif %}"
+             style="width: {{ system.memory.used_percent }}%"></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 <div class="kpi-strip">
   <div class="kpi-card kpi-running">
     <div class="kpi-value">{{ pending | default(0) }}</div>
@@ -86,5 +116,36 @@
   {% else %}
   <div class="empty-state">Прогонов ещё не было.</div>
   {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-title">Очистка старых прогонов</div>
+  <div class="form-hint mb-2">
+    «Проверить» ничего не удаляет — только считает, сколько job'ов попадёт под правило.
+    «Удалить» применяет по-настоящему и не отменяется.
+  </div>
+  <div class="cleanup-grid">
+    {% for p in pipelines %}
+    <div>
+      <div class="cleanup-project-title">{{ p.name }}</div>
+      <div class="cleanup-actions">
+        {% for preset in cleanup_presets %}
+        <div class="cleanup-preset">
+          <span>{{ preset.label }}</span>
+          <form method="post" action="/cleanup/{{ p.project }}">
+            <input type="hidden" name="mode" value="{{ preset.mode }}">
+            <input type="hidden" name="days" value="{{ preset.days }}">
+            <button class="btn btn-outline btn-sm" type="submit" name="action" value="preview">Проверить</button>
+            <button class="btn btn-danger btn-sm" type="submit" name="action" value="execute"
+                    onclick="return confirm(&quot;Удалить прогоны «{{ p.name }}» — {{ preset.label | lower }}? Это необратимо.&quot;)">Удалить</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">Конвейеры не отвечают.</div>
+    {% endfor %}
+  </div>
 </div>
 {% endblock %}
