@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Marshrutka — окно в видеоконвейеры</title>
+<meta name="description" content="Marshrutka — панель управления конвейером автоматической подготовки и публикации видео на YouTube-каналы «Ежу понятно», «Истории в видео» и «Зад Пегаса».">
 <link rel="icon" type="image/png" href="/static/favicon-96x96.png" sizes="96x96">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="shortcut icon" href="/static/favicon.ico">
@@ -13,25 +14,181 @@
 </head>
 <body class="standalone standalone-dark">
 
-<div class="standalone-wrap">
-  <div class="landing-card">
-    <img class="landing-logo" src="/static/logo-white.png" alt="Marshrutka">
-    <div class="landing-title">Marshrutka</div>
-    <div class="landing-desc">
-      Административная панель конвейера автоматической подготовки и публикации
-      видео на YouTube-каналы «Ежу понятно», «Истории в видео» и «Зад Пегаса».
-      Здесь видно состояние конвейеров, историю прогонов и очередь материалов —
-      сам процесс ведёт агент Hermes.
+<div class="landing-page">
+
+  <section class="hero-section">
+    <div class="landing-card">
+      <img class="landing-logo" src="/static/logo-white.png" alt="Marshrutka">
+      <div class="landing-title">Marshrutka</div>
+      <div class="landing-desc">
+        Панель управления конвейером, который готовит и публикует видео на
+        YouTube-каналы «Ежу понятно», «Истории в видео» и «Зад Пегаса».
+        От исходного материала до опубликованного ролика — без ручного монтажа.
+      </div>
+      <div class="landing-actions">
+        <a class="btn btn-primary btn-lg" href="/login">Войти</a>
+      </div>
+      <a class="scroll-hint" href="#how">Как это устроено ↓</a>
     </div>
-    <div class="landing-actions">
-      <a class="btn btn-primary btn-lg" href="/login">Войти</a>
+  </section>
+
+  <section class="section" id="how">
+    <div class="section-inner">
+      <div class="section-head">
+        <div class="section-kicker">Процесс</div>
+        <h2 class="section-title">Как это работает</h2>
+        <div class="section-sub">
+          Один оператор ведёт три канала. Конвейер берёт на себя всю
+          повторяющуюся работу между исходным материалом и готовой публикацией.
+        </div>
+      </div>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-num">01</div>
+          <div class="step-name">Материал</div>
+          <div class="step-text">
+            В очередь попадает тема, ссылка на исходное видео или готовый текст —
+            вручную или через подбор похожих сюжетов.
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">02</div>
+          <div class="step-name">Обработка</div>
+          <div class="step-text">
+            Транскрибация, пересказ, синтез речи и генерация субтитров —
+            текст превращается в озвученный сценарий.
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">03</div>
+          <div class="step-name">Монтаж</div>
+          <div class="step-text">
+            Рендер кадра, аватар, сведение звука, субтитры, заставка и
+            концовка собираются в готовый видеофайл.
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">04</div>
+          <div class="step-name">Публикация</div>
+          <div class="step-text">
+            Готовое видео публикуется на канал оператора на YouTube,
+            а в служебный Telegram-канал уходит отчёт о прогоне.
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="landing-legal">
-      <a href="/privacy">Политика конфиденциальности</a>
-      <span class="sep">·</span>
-      <a href="/terms">Условия использования</a>
+  </section>
+
+  <section class="section section-alt">
+    <div class="section-inner">
+      <div class="section-head">
+        <div class="section-kicker">Панель</div>
+        <h2 class="section-title">Изнутри</h2>
+        <div class="section-sub">
+          Живые скриншоты панели оператора: состояние конвейеров, очередь
+          материалов и разбор каждого прогона по шагам.
+        </div>
+      </div>
+      <div class="shots-grid">
+        <div class="shot-frame shot-wide">
+          <div class="shot-bar"><span></span><span></span><span></span></div>
+          <img src="/static/screenshots/dashboard.png" alt="Дашборд Marshrutka: состояние трёх конвейеров, диск и RAM сервера" loading="lazy">
+          <div class="shot-caption">Дашборд — состояние всех трёх конвейеров и ресурсы сервера в реальном времени</div>
+        </div>
+        <div class="shot-frame">
+          <div class="shot-bar"><span></span><span></span><span></span></div>
+          <img src="/static/screenshots/run-detail.png" alt="Разбор одного прогона конвейера по шагам: скачивание, транскрибация, синтез речи, монтаж, публикация" loading="lazy">
+          <div class="shot-caption">Прогон по шагам — от скачивания исходника до публикации на YouTube</div>
+        </div>
+        <div class="shot-frame">
+          <div class="shot-bar"><span></span><span></span><span></span></div>
+          <img src="/static/screenshots/runs.png" alt="История прогонов конвейера с длительностью и статусом" loading="lazy">
+          <div class="shot-caption">История прогонов — статус, длительность, что пошло не так</div>
+        </div>
+        <div class="shot-frame">
+          <div class="shot-bar"><span></span><span></span><span></span></div>
+          <img src="/static/screenshots/inbox.png" alt="Очередь материалов для конвейера" loading="lazy">
+          <div class="shot-caption">Очередь материалов — что взять в работу следующим</div>
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
+
+  <section class="section">
+    <div class="section-inner">
+      <div class="section-head">
+        <div class="section-kicker">Каналы</div>
+        <h2 class="section-title">Кому служит конвейер</h2>
+        <div class="section-sub">
+          Один и тот же конвейер обслуживает три собственных YouTube-канала
+          оператора — у каждого своя тематика, общий технологический стек.
+        </div>
+      </div>
+      <div class="channels-grid">
+        <div class="channel-card">
+          <div class="channel-name">Ежу понятно</div>
+          <div class="channel-text">
+            Пересказывает зарубежные обучающие и объясняющие ролики на русском
+            языке — конвейер сам находит подходящие исходники, а дальше
+            переозвучивает и адаптирует их.
+          </div>
+        </div>
+        <div class="channel-card">
+          <div class="channel-name">Истории в видео</div>
+          <div class="channel-text">
+            Превращает текстовые истории в озвученные видео с аватаром и
+            субтитрами — от сценария до готового ролика без участия монтажёра.
+          </div>
+        </div>
+        <div class="channel-card">
+          <div class="channel-name">Зад Пегаса</div>
+          <div class="channel-text">
+            Тот же принцип сторителлинга на собственном материале — синтез речи,
+            монтаж и сведение звука выполняются автоматически.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="section-inner">
+      <div class="access-panel">
+        <div class="access-icon">🔐</div>
+        <div class="access-body">
+          <div class="section-kicker">Доступ к YouTube</div>
+          <h2 class="section-title access-title">Прозрачно про OAuth</h2>
+          <p class="access-text">
+            Приложение запрашивает у Google только два разрешения YouTube Data API v3 —
+            <code>youtube.upload</code> для загрузки готовых видео и <code>youtube</code>
+            для обновления их метаданных и выбора канала при первой авторизации.
+            Доступ используется исключительно для публикации на собственные каналы
+            оператора: сервис не регистрирует сторонних пользователей и не работает
+            с чужими аккаунтами YouTube.
+          </p>
+          <div class="access-links">
+            <a href="/privacy">Политика конфиденциальности →</a>
+            <a href="/terms">Условия использования →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="landing-footer">
+    <div class="footer-inner">
+      <img class="footer-logo" src="/static/logo-white.png" alt="Marshrutka">
+      <div class="landing-actions">
+        <a class="btn btn-primary btn-lg" href="/login">Войти</a>
+      </div>
+      <div class="landing-legal">
+        <a href="/privacy">Политика конфиденциальности</a>
+        <span class="sep">·</span>
+        <a href="/terms">Условия использования</a>
+      </div>
+    </div>
+  </footer>
+
 </div>
 
 </body>

@@ -222,14 +222,16 @@ body.standalone { display: block; height: auto; min-height: 100vh; overflow: aut
   align-items: center; justify-content: center; padding: 2.5rem 1.25rem;
 }
 
-/* Тёмная тема — лендинг и вход (эффектные страницы). */
-body.standalone-dark { background: var(--dark-bg); color: var(--text-on-dark); }
-body.standalone-dark .standalone-wrap {
+/* Тёмная тема — лендинг и вход (эффектные страницы). Свечения на body,
+   а не на .standalone-wrap — лендинг больше не одна центрированная карточка,
+   а прокручиваемая страница из нескольких секций. */
+body.standalone-dark {
+  color: var(--text-on-dark);
   background:
     radial-gradient(1100px 650px at 82% -8%, rgba(129, 140, 248, .16), transparent 60%),
     radial-gradient(850px 550px at 6% 108%, rgba(245, 158, 11, .09), transparent 55%),
     var(--dark-bg);
-  overflow: hidden;
+  background-attachment: fixed;
 }
 
 /* Светлая тема — privacy/terms (длинный читаемый текст). */
@@ -272,6 +274,93 @@ body.standalone-light { background: var(--bg); color: var(--text); }
 }
 .btn-lg:hover { box-shadow: 0 16px 40px -8px rgba(99, 102, 241, .7); transform: translateY(-1px); }
 .btn-lg:active { transform: translateY(0); }
+
+/* ── Лендинг: многосекционная раскладка ── */
+.hero-section {
+  min-height: 92vh; display: flex; align-items: center; justify-content: center;
+  padding: 3rem 1.25rem 2rem;
+}
+.scroll-hint { display: inline-block; margin-top: 3rem; font-size: .82rem; color: var(--text-on-dark-faint); }
+.scroll-hint:hover { color: var(--indigo-glow); }
+
+.section { padding: 5rem 1.25rem; position: relative; }
+.section-inner { max-width: 1040px; margin: 0 auto; }
+.section-alt { background: rgba(255, 255, 255, .015); border-top: 1px solid var(--dark-border); border-bottom: 1px solid var(--dark-border); }
+
+.section-head { max-width: 620px; margin: 0 auto 3rem; text-align: center; }
+.section-kicker {
+  font-size: .74rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--indigo-glow); margin-bottom: .6rem;
+}
+.section-title { font-size: 1.6rem; font-weight: 700; letter-spacing: -.02em; margin-bottom: .75rem; color: var(--text-on-dark); }
+.section-sub { color: var(--text-on-dark-muted); font-size: .95rem; line-height: 1.7; }
+
+/* Как это работает */
+.steps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; }
+.step-card {
+  background: linear-gradient(180deg, var(--dark-surface-1), var(--dark-surface-2));
+  border: 1px solid var(--dark-border); border-radius: 18px; padding: 1.5rem 1.35rem;
+  transition: border-color .18s, transform .18s;
+}
+.step-card:hover { border-color: var(--dark-border-hover); transform: translateY(-3px); }
+.step-num { font-size: .78rem; font-weight: 800; color: var(--indigo-glow); letter-spacing: .04em; margin-bottom: .75rem; }
+.step-name { font-size: 1.02rem; font-weight: 600; margin-bottom: .5rem; color: var(--text-on-dark); }
+.step-text { font-size: .85rem; line-height: 1.65; color: var(--text-on-dark-muted); }
+
+/* Скриншоты панели */
+.shots-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
+.shot-wide { grid-column: 1 / -1; }
+.shot-frame {
+  background: var(--dark-surface-2); border: 1px solid var(--dark-border); border-radius: 16px;
+  overflow: hidden; box-shadow: 0 20px 50px -24px rgba(0, 0, 0, .6);
+}
+.shot-bar { display: flex; gap: .4rem; padding: .7rem .85rem; background: rgba(255, 255, 255, .03); }
+.shot-bar span { width: .55rem; height: .55rem; border-radius: 50%; background: rgba(255, 255, 255, .12); }
+.shot-frame img { display: block; width: 100%; height: auto; }
+.shot-caption { padding: .85rem 1.1rem 1.1rem; font-size: .82rem; color: var(--text-on-dark-muted); line-height: 1.5; }
+
+/* Каналы */
+.channels-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+.channel-card {
+  background: linear-gradient(180deg, var(--dark-surface-1), var(--dark-surface-2));
+  border: 1px solid var(--dark-border); border-radius: 18px; padding: 1.75rem 1.5rem;
+  transition: border-color .18s, transform .18s;
+}
+.channel-card:hover { border-color: var(--dark-border-hover); transform: translateY(-3px); }
+.channel-name { font-size: 1.05rem; font-weight: 700; margin-bottom: .65rem; color: var(--text-on-dark); }
+.channel-text { font-size: .87rem; line-height: 1.7; color: var(--text-on-dark-muted); }
+
+/* Доступ к YouTube */
+.access-panel {
+  display: flex; gap: 1.5rem; align-items: flex-start;
+  background: linear-gradient(135deg, rgba(129, 140, 248, .08), rgba(245, 158, 11, .05));
+  border: 1px solid var(--dark-border); border-radius: 22px; padding: 2.25rem 2.5rem;
+  max-width: 780px; margin: 0 auto;
+}
+.access-icon { font-size: 1.8rem; line-height: 1; flex-shrink: 0; }
+.access-title { text-align: left; margin-bottom: .9rem; }
+.access-text { color: var(--text-on-dark-muted); font-size: .9rem; line-height: 1.8; margin-bottom: 1.25rem; }
+.access-text code {
+  background: rgba(129, 140, 248, .14); color: var(--indigo-glow); padding: .1rem .4rem;
+  border-radius: 5px; font-size: .85em; font-family: "SF Mono", "Fira Code", monospace;
+}
+.access-links { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.access-links a { font-size: .85rem; color: var(--text-on-dark); font-weight: 500; }
+.access-links a:hover { color: var(--indigo-glow); }
+
+/* Футер лендинга */
+.landing-footer { padding: 4rem 1.25rem 3.5rem; text-align: center; }
+.footer-inner { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 1.75rem; }
+.footer-logo { width: 130px; height: auto; opacity: .8; }
+.footer-inner .landing-legal { margin-top: 0; }
+
+@media (max-width: 760px) {
+  .steps-grid, .shots-grid, .channels-grid { grid-template-columns: 1fr; }
+  .access-panel { flex-direction: column; padding: 1.75rem; }
+  .section { padding: 3.5rem 1.25rem; }
+  .section-title { font-size: 1.35rem; }
+  .hero-section { min-height: auto; padding-top: 4rem; }
+}
 
 /* ── Экран входа: пин-код ── */
 .auth-card {
